@@ -154,7 +154,8 @@ func (h *MessageHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	var req models.SendMessageRequest
+	// Use the existing CreateMessageRequest from models
+	var req models.CreateMessageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.BadRequestResponse(c, "Invalid request format", err)
 		return
@@ -171,10 +172,13 @@ func (h *MessageHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	if len(req.Content) > utils.MaxMessageContentLength {
+	if len(req.Content) > utils.MaxPostContentLength {
 		utils.BadRequestResponse(c, "Message content exceeds maximum length", nil)
 		return
 	}
+
+	// Set conversation ID from URL parameter
+	req.ConversationID = conversationIDStr
 
 	message, err := h.messageService.SendMessage(userID.(primitive.ObjectID), conversationID, req)
 	if err != nil {
@@ -254,7 +258,7 @@ func (h *MessageHandler) UpdateMessage(c *gin.Context) {
 	}
 
 	// Validate content length if provided
-	if req.Content != nil && len(*req.Content) > utils.MaxMessageContentLength {
+	if req.Content != "" && len(req.Content) > utils.MaxPostContentLength {
 		utils.BadRequestResponse(c, "Message content exceeds maximum length", nil)
 		return
 	}
@@ -263,6 +267,10 @@ func (h *MessageHandler) UpdateMessage(c *gin.Context) {
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "access denied") {
 			utils.NotFoundResponse(c, "Message not found or access denied")
+			return
+		}
+		if strings.Contains(err.Error(), "cannot be edited") {
+			utils.BadRequestResponse(c, "Message cannot be edited", err)
 			return
 		}
 		utils.InternalServerErrorResponse(c, "Failed to update message", err)
@@ -355,6 +363,59 @@ func (h *MessageHandler) MarkMessagesAsRead(c *gin.Context) {
 	})
 }
 
+// ReactToMessage adds or removes a reaction to a message
+func (h *MessageHandler) ReactToMessage(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	messageIDStr := c.Param("id")
+	messageID, err := primitive.ObjectIDFromHex(messageIDStr)
+	if err != nil {
+		utils.BadRequestResponse(c, "Invalid message ID format", err)
+		return
+	}
+
+	var req models.MessageReactionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequestResponse(c, "Invalid request format", err)
+		return
+	}
+
+	if err := h.validator.Struct(req); err != nil {
+		utils.ValidationErrorResponse(c, err)
+		return
+	}
+
+	err = h.messageService.ReactToMessage(messageID, userID.(primitive.ObjectID), req.ReactionType, req.Action)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "access denied") {
+			utils.NotFoundResponse(c, "Message not found or access denied")
+			return
+		}
+		utils.InternalServerErrorResponse(c, "Failed to react to message", err)
+		return
+	}
+
+	// Broadcast reaction via WebSocket
+	go h.broadcastReaction(messageID, userID.(primitive.ObjectID), req.ReactionType, req.Action)
+
+	var message string
+	if req.Action == "add" {
+		message = "Reaction added successfully"
+	} else {
+		message = "Reaction removed successfully"
+	}
+
+	utils.OkResponse(c, message, gin.H{
+		"message_id":    messageIDStr,
+		"reaction_type": req.ReactionType,
+		"action":        req.Action,
+	})
+}
+
 // SearchMessages searches messages in conversations
 func (h *MessageHandler) SearchMessages(c *gin.Context) {
 	userID, exists := c.Get("user_id")
@@ -400,9 +461,13 @@ func (h *MessageHandler) SearchMessages(c *gin.Context) {
 	totalCount := int64(len(messageResponses))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
 
-	utils.PaginatedSuccessResponse(c, "Message search completed successfully", messageResponses, paginationMeta, gin.H{
-		"query": query,
-	})
+	// Include query in response data
+	responseData := gin.H{
+		"messages": messageResponses,
+		"query":    query,
+	}
+
+	utils.PaginatedSuccessResponse(c, "Message search completed successfully", responseData, paginationMeta, nil)
 }
 
 // LeaveConversation allows user to leave a group conversation
@@ -550,6 +615,39 @@ func (h *MessageHandler) UpdateConversation(c *gin.Context) {
 	utils.OkResponse(c, "Conversation updated successfully", conversation.ToConversationResponse())
 }
 
+// GetMessageStats gets message statistics
+func (h *MessageHandler) GetMessageStats(c *gin.Context) {
+	_, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	// Optional conversation ID filter
+	var conversationID *primitive.ObjectID
+	if conversationIDStr := c.Query("conversation_id"); conversationIDStr != "" {
+		if id, err := primitive.ObjectIDFromHex(conversationIDStr); err == nil {
+			conversationID = &id
+		}
+	}
+
+	// Optional user ID filter (admin feature)
+	var targetUserID *primitive.ObjectID
+	if userIDStr := c.Query("user_id"); userIDStr != "" {
+		if id, err := primitive.ObjectIDFromHex(userIDStr); err == nil {
+			targetUserID = &id
+		}
+	}
+
+	stats, err := h.messageService.GetMessageStats(conversationID, targetUserID)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to get message statistics", err)
+		return
+	}
+
+	utils.OkResponse(c, "Message statistics retrieved successfully", stats)
+}
+
 // WebSocket broadcasting helper methods
 
 func (h *MessageHandler) broadcastMessage(message *models.Message) {
@@ -563,11 +661,19 @@ func (h *MessageHandler) broadcastMessage(message *models.Message) {
 		Data: map[string]interface{}{
 			"id":              message.ID.Hex(),
 			"conversation_id": message.ConversationID.Hex(),
-			"sender_id":       message.SenderID.Hex(),
+			"sender":          message.Sender,
 			"content":         message.Content,
 			"content_type":    message.ContentType,
 			"media":           message.Media,
+			"status":          message.Status,
+			"sent_at":         message.SentAt,
 			"created_at":      message.CreatedAt,
+			"reply_to_message_id": func() string {
+				if message.ReplyToMessageID != nil {
+					return message.ReplyToMessageID.Hex()
+				}
+				return ""
+			}(),
 		},
 	}
 
@@ -588,8 +694,10 @@ func (h *MessageHandler) broadcastMessageUpdate(message *models.Message) {
 			"id":              message.ID.Hex(),
 			"conversation_id": message.ConversationID.Hex(),
 			"content":         message.Content,
+			"media":           message.Media,
 			"is_edited":       message.IsEdited,
 			"edited_at":       message.EditedAt,
+			"updated_at":      message.UpdatedAt,
 		},
 	}
 
@@ -634,4 +742,32 @@ func (h *MessageHandler) broadcastReadReceipt(conversationID, userID, lastMessag
 
 	channel := "conversation:" + conversationID.Hex()
 	h.hub.BroadcastToChannel(channel, wsMessage, userID)
+}
+
+func (h *MessageHandler) broadcastReaction(messageID, userID primitive.ObjectID, reactionType models.ReactionType, action string) {
+	if h.hub == nil {
+		return
+	}
+
+	// Get message to find conversation ID
+	message, err := h.messageService.GetMessageByID(messageID, userID)
+	if err != nil {
+		return
+	}
+
+	wsMessage := websocket.WebSocketMessage{
+		Type:   "message",
+		Action: "reaction",
+		Data: map[string]interface{}{
+			"message_id":      messageID.Hex(),
+			"conversation_id": message.ConversationID.Hex(),
+			"user_id":         userID.Hex(),
+			"reaction_type":   reactionType,
+			"action":          action,
+			"timestamp":       time.Now(),
+		},
+	}
+
+	channel := "conversation:" + message.ConversationID.Hex()
+	h.hub.BroadcastToChannel(channel, wsMessage, primitive.NilObjectID)
 }

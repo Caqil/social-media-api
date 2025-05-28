@@ -40,13 +40,6 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		utils.ValidationErrorResponse(c, err)
 		return
 	}
-
-	// Additional validation
-	if req.Password != req.ConfirmPassword {
-		utils.BadRequestResponse(c, "Passwords do not match", nil)
-		return
-	}
-
 	// Validate username format
 	if !utils.IsValidUsername(req.Username) {
 		utils.BadRequestResponse(c, "Invalid username format", nil)

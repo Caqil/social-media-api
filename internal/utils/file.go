@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -450,4 +451,7 @@ func GetFileHash(filePath string) (string, error) {
 
 	// Simple hash implementation - in production use crypto/sha256
 	return hex.EncodeToString(hasher), nil
+}
+func StringToInt(s string) (int, error) {
+	return strconv.Atoi(s)
 }

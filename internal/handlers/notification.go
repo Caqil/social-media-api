@@ -54,9 +54,7 @@ func (h *NotificationHandler) GetNotifications(c *gin.Context) {
 	totalCount := int64(len(notifications))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
 
-	utils.PaginatedSuccessResponse(c, "Notifications retrieved successfully", notifications, paginationMeta, gin.H{
-		"unread_only": unreadOnly,
-	})
+	utils.PaginatedSuccessResponse(c, "Notifications retrieved successfully", notifications, paginationMeta, nil)
 }
 
 // GetNotificationStats retrieves notification statistics

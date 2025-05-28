@@ -127,9 +127,7 @@ func (h *FollowHandler) GetFollowers(c *gin.Context) {
 	totalCount := int64(len(followers))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
 
-	utils.PaginatedSuccessResponse(c, "Followers retrieved successfully", followers, paginationMeta, gin.H{
-		"user_id": userIDStr,
-	})
+	utils.PaginatedSuccessResponse(c, "Followers retrieved successfully", followers, paginationMeta, nil)
 }
 
 // GetFollowing retrieves users that a user is following
@@ -160,9 +158,7 @@ func (h *FollowHandler) GetFollowing(c *gin.Context) {
 	totalCount := int64(len(following))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
 
-	utils.PaginatedSuccessResponse(c, "Following retrieved successfully", following, paginationMeta, gin.H{
-		"user_id": userIDStr,
-	})
+	utils.PaginatedSuccessResponse(c, "Following retrieved successfully", following, paginationMeta, nil)
 }
 
 // GetFollowRequests retrieves pending follow requests
@@ -199,9 +195,7 @@ func (h *FollowHandler) GetFollowRequests(c *gin.Context) {
 	totalCount := int64(len(requests))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
 
-	utils.PaginatedSuccessResponse(c, "Follow requests retrieved successfully", requests, paginationMeta, gin.H{
-		"request_type": requestType,
-	})
+	utils.PaginatedSuccessResponse(c, "Follow requests retrieved successfully", requests, paginationMeta, nil)
 }
 
 // AcceptFollowRequest accepts a follow request
@@ -414,9 +408,7 @@ func (h *FollowHandler) GetMutualFollows(c *gin.Context) {
 	totalCount := int64(len(mutualFollows))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
 
-	utils.PaginatedSuccessResponse(c, "Mutual follows retrieved successfully", mutualFollows, paginationMeta, gin.H{
-		"target_user_id": targetUserIDStr,
-	})
+	utils.PaginatedSuccessResponse(c, "Mutual follows retrieved successfully", mutualFollows, paginationMeta, nil)
 }
 
 // GetSuggestedUsers retrieves suggested users to follow
@@ -517,7 +509,5 @@ func (h *FollowHandler) GetFollowActivity(c *gin.Context) {
 	totalCount := int64(len(activity))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
 
-	utils.PaginatedSuccessResponse(c, "Follow activity retrieved successfully", activity, paginationMeta, gin.H{
-		"activity_type": activityType,
-	})
+	utils.PaginatedSuccessResponse(c, "Follow activity retrieved successfully", activity, paginationMeta, nil)
 }

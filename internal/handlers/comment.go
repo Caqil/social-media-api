@@ -145,10 +145,7 @@ func (h *CommentHandler) GetPostComments(c *gin.Context) {
 	totalCount := int64(len(commentResponses))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
 
-	utils.PaginatedSuccessResponse(c, "Comments retrieved successfully", commentResponses, paginationMeta, gin.H{
-		"sort_by": sortBy,
-		"post_id": postIDStr,
-	})
+	utils.PaginatedSuccessResponse(c, "Comments retrieved successfully", commentResponses, paginationMeta, nil)
 }
 
 // GetCommentReplies retrieves replies to a specific comment
@@ -189,9 +186,7 @@ func (h *CommentHandler) GetCommentReplies(c *gin.Context) {
 	totalCount := int64(len(replyResponses))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
 
-	utils.PaginatedSuccessResponse(c, "Comment replies retrieved successfully", replyResponses, paginationMeta, gin.H{
-		"parent_comment_id": commentIDStr,
-	})
+	utils.PaginatedSuccessResponse(c, "Comment replies retrieved successfully", replyResponses, paginationMeta, nil)
 }
 
 // UpdateComment updates an existing comment
@@ -501,9 +496,7 @@ func (h *CommentHandler) GetUserComments(c *gin.Context) {
 	totalCount := int64(len(commentResponses))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
 
-	utils.PaginatedSuccessResponse(c, "User comments retrieved successfully", commentResponses, paginationMeta, gin.H{
-		"user_id": userIDStr,
-	})
+	utils.PaginatedSuccessResponse(c, "User comments retrieved successfully", commentResponses, paginationMeta, nil)
 }
 
 // GetCommentThread retrieves a complete comment thread

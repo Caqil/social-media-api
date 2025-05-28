@@ -32,26 +32,13 @@ func NewMessageService() *MessageService {
 }
 
 // SendMessage sends a new message in a conversation
-func (ms *MessageService) SendMessage(senderID, conversationID primitive.ObjectID, req models.SendMessageRequest) (*models.Message, error) {
+func (ms *MessageService) SendMessage(senderID, conversationID primitive.ObjectID, req models.CreateMessageRequest) (*models.Message, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	// Verify user is participant in conversation
 	if !ms.isUserInConversation(ctx, senderID, conversationID) {
 		return nil, errors.New("access denied: user not in conversation")
-	}
-
-	// Convert media IDs if provided
-	var media []models.MediaInfo
-	for _, mediaReq := range req.Media {
-		mediaInfo := models.MediaInfo{
-			URL:       mediaReq.URL,
-			Type:      mediaReq.Type,
-			Thumbnail: mediaReq.Thumbnail,
-			Size:      mediaReq.Size,
-			Duration:  mediaReq.Duration,
-		}
-		media = append(media, mediaInfo)
 	}
 
 	// Handle reply to message
@@ -67,18 +54,26 @@ func (ms *MessageService) SendMessage(senderID, conversationID primitive.ObjectI
 		ConversationID:   conversationID,
 		SenderID:         senderID,
 		Content:          req.Content,
-		ContentType:      models.ContentType(req.ContentType),
-		Media:            media,
+		ContentType:      req.ContentType,
+		Media:            req.Media, // Already []models.MediaInfo
 		ReplyToMessageID: replyToMessageID,
 		Status:           models.MessageSent,
 		Source:           "api",
 		ReadBy:           []models.MessageReadReceipt{},
-		ReactionsCount:   make(map[string]int64),
-		IsDelivered:      false,
+		ReactionsCount:   make(map[models.ReactionType]int64), // Fixed: use ReactionType not string
+		Priority:         req.Priority,
+		ExpiresAt:        req.ExpiresAt,
 		IsEdited:         false,
-		IsForwarded:      req.IsForwarded,
+		IsForwarded:      false,
 		ForwardedFrom:    nil,
-		CustomProperties: req.CustomProperties,
+		IsExpired:        false,
+		IsThreadRoot:     false,
+		ThreadCount:      0,
+	}
+
+	// Set default priority if empty
+	if message.Priority == "" {
+		message.Priority = "normal"
 	}
 
 	message.BeforeCreate()
@@ -136,6 +131,11 @@ func (ms *MessageService) GetConversationMessages(conversationID, userID primiti
 	// Populate sender information for all messages
 	for i := range messages {
 		ms.populateMessageSender(ctx, &messages[i])
+
+		// Populate reply to message if exists
+		if messages[i].ReplyToMessageID != nil {
+			ms.populateReplyToMessage(ctx, &messages[i])
+		}
 	}
 
 	return messages, nil
@@ -164,6 +164,11 @@ func (ms *MessageService) GetMessageByID(messageID, userID primitive.ObjectID) (
 	// Populate sender information
 	ms.populateMessageSender(ctx, &message)
 
+	// Populate reply to message if exists
+	if message.ReplyToMessageID != nil {
+		ms.populateReplyToMessage(ctx, &message)
+	}
+
 	return &message, nil
 }
 
@@ -187,30 +192,25 @@ func (ms *MessageService) UpdateMessage(messageID, userID primitive.ObjectID, re
 		return nil, err
 	}
 
-	// Build update document
-	update := bson.M{"$set": bson.M{"updated_at": time.Now()}}
-
-	if req.Content != nil {
-		update["$set"].(bson.M)["content"] = *req.Content
-		update["$set"].(bson.M)["is_edited"] = true
-		update["$set"].(bson.M)["edited_at"] = time.Now()
+	// Check if message can be edited
+	if !message.CanEditMessage(userID) {
+		return nil, errors.New("message cannot be edited")
 	}
 
-	if req.Media != nil {
-		var media []models.MediaInfo
-		for _, mediaReq := range req.Media {
-			mediaInfo := models.MediaInfo{
-				URL:       mediaReq.URL,
-				Type:      mediaReq.Type,
-				Thumbnail: mediaReq.Thumbnail,
-				Size:      mediaReq.Size,
-				Duration:  mediaReq.Duration,
-			}
-			media = append(media, mediaInfo)
-		}
-		update["$set"].(bson.M)["media"] = media
+	// Build update document
+	now := time.Now()
+	update := bson.M{"$set": bson.M{"updated_at": now}}
+
+	if req.Content != "" {
+		update["$set"].(bson.M)["content"] = req.Content
 		update["$set"].(bson.M)["is_edited"] = true
-		update["$set"].(bson.M)["edited_at"] = time.Now()
+		update["$set"].(bson.M)["edited_at"] = now
+	}
+
+	if len(req.Media) > 0 {
+		update["$set"].(bson.M)["media"] = req.Media
+		update["$set"].(bson.M)["is_edited"] = true
+		update["$set"].(bson.M)["edited_at"] = now
 	}
 
 	// Update message
@@ -243,7 +243,7 @@ func (ms *MessageService) DeleteMessage(messageID, userID primitive.ObjectID) (*
 	}
 
 	// Check if user can delete this message (sender or conversation admin)
-	if message.SenderID != userID && !ms.isConversationAdmin(ctx, userID, message.ConversationID) {
+	if !message.CanDeleteMessage(userID, models.RoleUser, ms.isConversationAdmin(ctx, userID, message.ConversationID)) {
 		return nil, errors.New("access denied")
 	}
 
@@ -356,7 +356,7 @@ func (ms *MessageService) SearchMessages(userID primitive.ObjectID, query string
 }
 
 // ReactToMessage adds/removes reaction to a message
-func (ms *MessageService) ReactToMessage(messageID, userID primitive.ObjectID, reactionType models.ReactionType) error {
+func (ms *MessageService) ReactToMessage(messageID, userID primitive.ObjectID, reactionType models.ReactionType, action string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -377,43 +377,22 @@ func (ms *MessageService) ReactToMessage(messageID, userID primitive.ObjectID, r
 	}
 
 	// Update reaction count
-	reactionKey := "reactions_count." + string(reactionType)
+	if action == "add" {
+		message.AddReaction(reactionType)
+	} else if action == "remove" {
+		message.RemoveReaction(reactionType)
+	}
+
+	// Save changes
 	update := bson.M{
-		"$inc": bson.M{reactionKey: 1},
-		"$set": bson.M{"updated_at": time.Now()},
+		"$set": bson.M{
+			"reactions_count": message.ReactionsCount,
+			"updated_at":      time.Now(),
+		},
 	}
 
 	_, err = ms.messageCollection.UpdateOne(ctx, bson.M{"_id": messageID}, update)
 	return err
-}
-
-// GetUserConversationIDs gets all conversation IDs for a user
-func (ms *MessageService) getUserConversationIDs(ctx context.Context, userID primitive.ObjectID) ([]primitive.ObjectID, error) {
-	filter := bson.M{
-		"participants": userID,
-		"deleted_at":   bson.M{"$exists": false},
-	}
-
-	cursor, err := ms.conversationCollection.Find(ctx, filter, options.Find().SetProjection(bson.M{"_id": 1}))
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var conversations []struct {
-		ID primitive.ObjectID `bson:"_id"`
-	}
-
-	if err := cursor.All(ctx, &conversations); err != nil {
-		return nil, err
-	}
-
-	conversationIDs := make([]primitive.ObjectID, len(conversations))
-	for i, conv := range conversations {
-		conversationIDs[i] = conv.ID
-	}
-
-	return conversationIDs, nil
 }
 
 // Helper methods
@@ -447,15 +426,60 @@ func (ms *MessageService) populateMessageSender(ctx context.Context, message *mo
 	}
 }
 
+// populateReplyToMessage populates reply to message information
+func (ms *MessageService) populateReplyToMessage(ctx context.Context, message *models.Message) {
+	if message.ReplyToMessageID == nil {
+		return
+	}
+
+	var replyToMessage models.Message
+	err := ms.messageCollection.FindOne(ctx, bson.M{
+		"_id":        *message.ReplyToMessageID,
+		"deleted_at": bson.M{"$exists": false},
+	}).Decode(&replyToMessage)
+
+	if err == nil {
+		ms.populateMessageSender(ctx, &replyToMessage)
+		response := replyToMessage.ToMessageResponse()
+		message.ReplyToMessage = &response
+	}
+}
+
+// getUserConversationIDs gets all conversation IDs for a user
+func (ms *MessageService) getUserConversationIDs(ctx context.Context, userID primitive.ObjectID) ([]primitive.ObjectID, error) {
+	filter := bson.M{
+		"participants": userID,
+		"deleted_at":   bson.M{"$exists": false},
+	}
+
+	cursor, err := ms.conversationCollection.Find(ctx, filter, options.Find().SetProjection(bson.M{"_id": 1}))
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var conversations []struct {
+		ID primitive.ObjectID `bson:"_id"`
+	}
+
+	if err := cursor.All(ctx, &conversations); err != nil {
+		return nil, err
+	}
+
+	conversationIDs := make([]primitive.ObjectID, len(conversations))
+	for i, conv := range conversations {
+		conversationIDs[i] = conv.ID
+	}
+
+	return conversationIDs, nil
+}
+
 // updateConversationLastMessage updates conversation's last message information
 func (ms *MessageService) updateConversationLastMessage(conversationID primitive.ObjectID, message *models.Message) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	preview := message.Content
-	if len(preview) > 100 {
-		preview = preview[:97] + "..."
-	}
+	preview := message.GetMessagePreview()
 
 	update := bson.M{
 		"$set": bson.M{

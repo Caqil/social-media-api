@@ -144,7 +144,16 @@ type MessageReactionRequest struct {
 	Action       string       `json:"action" validate:"required,oneof=add remove"`
 }
 
-// Methods for Message model
+// MessageStats represents message statistics
+type MessageStats struct {
+	TotalMessages     int64            `json:"total_messages"`
+	TotalMediaFiles   int64            `json:"total_media_files"`
+	AverageLength     float64          `json:"average_length"`
+	ContentTypeCounts map[string]int64 `json:"content_type_counts"`
+	ReactionCounts    map[string]int64 `json:"reaction_counts,omitempty"`
+	MostActiveHour    int              `json:"most_active_hour,omitempty"`
+	MostActiveDay     string           `json:"most_active_day,omitempty"`
+}
 
 // BeforeCreate sets default values before creating message
 func (m *Message) BeforeCreate() {

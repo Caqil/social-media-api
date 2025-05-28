@@ -11,30 +11,30 @@ const (
 	APIVersion = "v1"
 
 	// Default pagination
-	DefaultPageSize = 20
-	MaxPageSize     = 100
-	MinPageSize     = 1
-
-	// Content limits
-	MaxPostContentLength    = 5000
-	MaxCommentContentLength = 2000
-	MaxStoryContentLength   = 2000
-	MaxBioLength            = 500
-	MaxUsernameLength       = 50
-	MinUsernameLength       = 3
-	MaxDisplayNameLength    = 100
-	MaxHashtagLength        = 100
-	MaxGroupNameLength      = 100
-	MaxEventTitleLength     = 200
+	DefaultPageSize               = 20
+	MaxPageSize                   = 100
+	MinPageSize                   = 1
+	MaxBulkNotificationRecipients = 10
+	MaxMessageContentLength       = 5000
+	MaxPostContentLength          = 5000
+	MaxCommentContentLength       = 2000
+	MaxStoryContentLength         = 2000
+	MaxBioLength                  = 500
+	MaxUsernameLength             = 50
+	MinUsernameLength             = 3
+	MaxDisplayNameLength          = 100
+	MaxHashtagLength              = 100
+	MaxGroupNameLength            = 100
+	MaxEventTitleLength           = 200
 
 	// Media constraints
-	MaxImageSizeMB    = 10  // 10MB
-	MaxVideoSizeMB    = 100 // 100MB
-	MaxAudioSizeMB    = 50  // 50MB
-	MaxDocumentSizeMB = 25  // 25MB
-	MaxImageWidth     = 4096
-	MaxImageHeight    = 4096
-
+	MaxImageSizeMB     = 10  // 10MB
+	MaxVideoSizeMB     = 100 // 100MB
+	MaxAudioSizeMB     = 50  // 50MB
+	MaxDocumentSizeMB  = 25  // 25MB
+	MaxImageWidth      = 4096
+	MaxImageHeight     = 4096
+	MaxBulkUploadFiles = 20
 	// Rate limiting
 	DefaultRateLimit       = 100 // requests per minute
 	AuthRateLimit          = 5   // login attempts per minute

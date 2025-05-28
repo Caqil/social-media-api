@@ -56,11 +56,8 @@ func (h *FeedHandler) GetPersonalizedFeed(c *gin.Context) {
 
 	totalCount := int64(len(feedItems))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
+	utils.PaginatedSuccessResponse(c, "Personalized feed retrieved successfully", feedItems, paginationMeta, nil)
 
-	utils.PaginatedSuccessResponse(c, "Personalized feed retrieved successfully", feedItems, paginationMeta, gin.H{
-		"feed_type": feedType,
-		"refreshed": refresh,
-	})
 }
 
 // GetFollowingFeed retrieves feed from followed users only
@@ -91,11 +88,8 @@ func (h *FeedHandler) GetFollowingFeed(c *gin.Context) {
 
 	totalCount := int64(len(feedItems))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
+	utils.PaginatedSuccessResponse(c, "Following feed retrieved successfully", feedItems, paginationMeta, nil)
 
-	utils.PaginatedSuccessResponse(c, "Following feed retrieved successfully", feedItems, paginationMeta, gin.H{
-		"feed_type": "following",
-		"refreshed": refresh,
-	})
 }
 
 // GetTrendingFeed retrieves trending content feed
@@ -127,10 +121,7 @@ func (h *FeedHandler) GetTrendingFeed(c *gin.Context) {
 	totalCount := int64(len(feedItems))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
 
-	utils.PaginatedSuccessResponse(c, "Trending feed retrieved successfully", feedItems, paginationMeta, gin.H{
-		"feed_type": "trending",
-		"refreshed": refresh,
-	})
+	utils.PaginatedSuccessResponse(c, "Trending feed retrieved successfully", feedItems, paginationMeta, nil)
 }
 
 // GetDiscoverFeed retrieves discover/explore feed
@@ -162,10 +153,7 @@ func (h *FeedHandler) GetDiscoverFeed(c *gin.Context) {
 	totalCount := int64(len(feedItems))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
 
-	utils.PaginatedSuccessResponse(c, "Discover feed retrieved successfully", feedItems, paginationMeta, gin.H{
-		"feed_type": "discover",
-		"refreshed": refresh,
-	})
+	utils.PaginatedSuccessResponse(c, "Discover feed retrieved successfully", feedItems, paginationMeta, nil)
 }
 
 // RecordInteraction records user interaction with feed content

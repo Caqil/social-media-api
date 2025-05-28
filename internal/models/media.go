@@ -1,17 +1,18 @@
-// models/media.go
+// Add this to internal/models/media.go (create new file)
 package models
 
 import (
+	"fmt"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// Media represents a media file (image, video, audio, document) in the system
+// Media represents a media file (image, video, audio, document)
 type Media struct {
 	BaseModel `bson:",inline"`
 
-	// File Information
+	// File information
 	OriginalName  string `json:"original_name" bson:"original_name" validate:"required"`
 	FileName      string `json:"file_name" bson:"file_name" validate:"required"`
 	FilePath      string `json:"file_path" bson:"file_path" validate:"required"`
@@ -19,141 +20,146 @@ type Media struct {
 	MimeType      string `json:"mime_type" bson:"mime_type" validate:"required"`
 	FileExtension string `json:"file_extension" bson:"file_extension" validate:"required"`
 
-	// Media Type and Category
-	Type     string `json:"type" bson:"type" validate:"required"`         // image, video, audio, document
-	Category string `json:"category,omitempty" bson:"category,omitempty"` // profile_pic, cover_pic, post_media, story_media, etc.
+	// Media properties
+	Type     string `json:"type" bson:"type" validate:"required,oneof=image video audio document"`
+	Category string `json:"category,omitempty" bson:"category,omitempty"`
+	Width    int    `json:"width,omitempty" bson:"width,omitempty"`
+	Height   int    `json:"height,omitempty" bson:"height,omitempty"`
+	Duration int    `json:"duration,omitempty" bson:"duration,omitempty"` // in seconds
 
-	// Upload Information
-	UploadedBy primitive.ObjectID `json:"uploaded_by" bson:"uploaded_by" validate:"required"`
-	Uploader   UserResponse       `json:"uploader,omitempty" bson:"-"`              // Populated when querying
-	Source     string             `json:"source,omitempty" bson:"source,omitempty"` // web, mobile, api
+	// URLs
+	URL string `json:"url" bson:"url" validate:"required"`
 
-	// Media Metadata
-	Width      int                    `json:"width,omitempty" bson:"width,omitempty"`
-	Height     int                    `json:"height,omitempty" bson:"height,omitempty"`
-	Duration   int                    `json:"duration,omitempty" bson:"duration,omitempty"` // For video/audio in seconds
-	Bitrate    int                    `json:"bitrate,omitempty" bson:"bitrate,omitempty"`
-	Framerate  float64                `json:"framerate,omitempty" bson:"framerate,omitempty"`
-	ColorSpace string                 `json:"color_space,omitempty" bson:"color_space,omitempty"`
-	Metadata   map[string]interface{} `json:"metadata,omitempty" bson:"metadata,omitempty"`
+	// Content information
+	AltText     string `json:"alt_text,omitempty" bson:"alt_text,omitempty"`
+	Description string `json:"description,omitempty" bson:"description,omitempty"`
+	Caption     string `json:"caption,omitempty" bson:"caption,omitempty"`
 
-	// Processing Status
+	// Ownership and access
+	UploadedBy   primitive.ObjectID   `json:"uploaded_by" bson:"uploaded_by" validate:"required"`
+	IsPublic     bool                 `json:"is_public" bson:"is_public"`
+	AccessPolicy string               `json:"access_policy" bson:"access_policy"` // public, private, restricted
+	AllowedUsers []primitive.ObjectID `json:"allowed_users,omitempty" bson:"allowed_users,omitempty"`
+
+	// Usage tracking
+	ViewCount     int64 `json:"view_count" bson:"view_count"`
+	DownloadCount int64 `json:"download_count" bson:"download_count"`
+
+	// Related content
+	RelatedTo string              `json:"related_to,omitempty" bson:"related_to,omitempty"` // post, story, message, profile
+	RelatedID *primitive.ObjectID `json:"related_id,omitempty" bson:"related_id,omitempty"`
+
+	// Processing status
 	IsProcessed      bool       `json:"is_processed" bson:"is_processed"`
 	ProcessingStatus string     `json:"processing_status" bson:"processing_status"` // pending, processing, completed, failed
 	ProcessedAt      *time.Time `json:"processed_at,omitempty" bson:"processed_at,omitempty"`
-	ProcessingError  string     `json:"processing_error,omitempty" bson:"processing_error,omitempty"`
 
-	// Variants/Thumbnails
+	// Storage information
+	StorageProvider string `json:"storage_provider" bson:"storage_provider"` // local, s3, cloudinary
+	StorageKey      string `json:"storage_key" bson:"storage_key"`
+	StorageBucket   string `json:"storage_bucket,omitempty" bson:"storage_bucket,omitempty"`
+
+	// Thumbnails and variants
 	Thumbnails []MediaVariant `json:"thumbnails,omitempty" bson:"thumbnails,omitempty"`
-	Variants   []MediaVariant `json:"variants,omitempty" bson:"variants,omitempty"` // Different sizes/qualities
+	Variants   []MediaVariant `json:"variants,omitempty" bson:"variants,omitempty"`
 
-	// URLs
-	URL          string `json:"url" bson:"url" validate:"required"`
-	ThumbnailURL string `json:"thumbnail_url,omitempty" bson:"thumbnail_url,omitempty"`
-	CDNUrl       string `json:"cdn_url,omitempty" bson:"cdn_url,omitempty"`
-
-	// Access and Usage
-	IsPublic      bool                 `json:"is_public" bson:"is_public"`
-	AccessPolicy  string               `json:"access_policy,omitempty" bson:"access_policy,omitempty"` // public, private, restricted
-	AllowedUsers  []primitive.ObjectID `json:"allowed_users,omitempty" bson:"allowed_users,omitempty"`
-	DownloadCount int64                `json:"download_count" bson:"download_count"`
-	ViewCount     int64                `json:"view_count" bson:"view_count"`
-
-	// Content Moderation
-	IsModerated      bool   `json:"is_moderated" bson:"is_moderated"`
-	ModerationStatus string `json:"moderation_status" bson:"moderation_status"` // pending, approved, rejected
-	ModerationNote   string `json:"moderation_note,omitempty" bson:"moderation_note,omitempty"`
-	IsReported       bool   `json:"is_reported" bson:"is_reported"`
-	ReportsCount     int64  `json:"reports_count" bson:"reports_count"`
-
-	// Storage Information
-	StorageProvider string                 `json:"storage_provider" bson:"storage_provider"` // local, s3, gcs, azure
-	StorageKey      string                 `json:"storage_key" bson:"storage_key"`
-	StorageMetadata map[string]interface{} `json:"storage_metadata,omitempty" bson:"storage_metadata,omitempty"`
-
-	// Associated Content
-	RelatedTo string              `json:"related_to,omitempty" bson:"related_to,omitempty"` // post, story, profile, group, event
-	RelatedID *primitive.ObjectID `json:"related_id,omitempty" bson:"related_id,omitempty"`
-
-	// Alt Text for Accessibility
-	AltText     string `json:"alt_text,omitempty" bson:"alt_text,omitempty" validate:"max=200"`
-	Description string `json:"description,omitempty" bson:"description,omitempty" validate:"max=1000"`
-
-	// Expiration (for temporary media like stories)
+	// Expiration
 	ExpiresAt *time.Time `json:"expires_at,omitempty" bson:"expires_at,omitempty"`
 	IsExpired bool       `json:"is_expired" bson:"is_expired"`
+
+	// Metadata
+	Metadata map[string]interface{} `json:"metadata,omitempty" bson:"metadata,omitempty"`
+	Tags     []string               `json:"tags,omitempty" bson:"tags,omitempty"`
+
+	// Moderation
+	IsModerationRequired bool   `json:"is_moderation_required" bson:"is_moderation_required"`
+	ModerationStatus     string `json:"moderation_status" bson:"moderation_status"` // pending, approved, rejected
+	ModerationNotes      string `json:"moderation_notes,omitempty" bson:"moderation_notes,omitempty"`
 }
 
-// MediaVariant represents different sizes/qualities of a media file
+// MediaVariant represents different sizes/formats of media
 type MediaVariant struct {
-	Name     string `json:"name" bson:"name"` // thumbnail, small, medium, large, original
-	URL      string `json:"url" bson:"url"`
-	Width    int    `json:"width,omitempty" bson:"width,omitempty"`
-	Height   int    `json:"height,omitempty" bson:"height,omitempty"`
-	FileSize int64  `json:"file_size" bson:"file_size"`
-	Quality  string `json:"quality,omitempty" bson:"quality,omitempty"` // low, medium, high
-	Format   string `json:"format" bson:"format"`                       // jpg, png, webp, mp4, etc.
+	Name      string    `json:"name" bson:"name"` // thumbnail, small, medium, large
+	URL       string    `json:"url" bson:"url"`
+	Width     int       `json:"width,omitempty" bson:"width,omitempty"`
+	Height    int       `json:"height,omitempty" bson:"height,omitempty"`
+	FileSize  int64     `json:"file_size" bson:"file_size"`
+	Format    string    `json:"format" bson:"format"` // jpg, png, webp, etc.
+	Quality   int       `json:"quality,omitempty" bson:"quality,omitempty"`
+	CreatedAt time.Time `json:"created_at" bson:"created_at"`
 }
 
 // MediaResponse represents media data returned in API responses
 type MediaResponse struct {
-	ID               string         `json:"id"`
-	OriginalName     string         `json:"original_name"`
-	FileName         string         `json:"file_name"`
-	FileSize         int64          `json:"file_size"`
-	MimeType         string         `json:"mime_type"`
-	FileExtension    string         `json:"file_extension"`
-	Type             string         `json:"type"`
-	Category         string         `json:"category,omitempty"`
-	UploadedBy       string         `json:"uploaded_by"`
-	Uploader         UserResponse   `json:"uploader,omitempty"`
-	Width            int            `json:"width,omitempty"`
-	Height           int            `json:"height,omitempty"`
-	Duration         int            `json:"duration,omitempty"`
-	IsProcessed      bool           `json:"is_processed"`
-	ProcessingStatus string         `json:"processing_status"`
-	Thumbnails       []MediaVariant `json:"thumbnails,omitempty"`
-	Variants         []MediaVariant `json:"variants,omitempty"`
-	URL              string         `json:"url"`
-	ThumbnailURL     string         `json:"thumbnail_url,omitempty"`
-	CDNUrl           string         `json:"cdn_url,omitempty"`
-	IsPublic         bool           `json:"is_public"`
-	DownloadCount    int64          `json:"download_count"`
-	ViewCount        int64          `json:"view_count"`
-	ModerationStatus string         `json:"moderation_status"`
-	AltText          string         `json:"alt_text,omitempty"`
-	Description      string         `json:"description,omitempty"`
-	ExpiresAt        *time.Time     `json:"expires_at,omitempty"`
-	IsExpired        bool           `json:"is_expired"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
-
-	// User-specific context
-	CanDownload bool `json:"can_download,omitempty"`
-	CanEdit     bool `json:"can_edit,omitempty"`
-	CanDelete   bool `json:"can_delete,omitempty"`
+	ID               string                 `json:"id"`
+	OriginalName     string                 `json:"original_name"`
+	FileName         string                 `json:"file_name"`
+	FileSize         int64                  `json:"file_size"`
+	MimeType         string                 `json:"mime_type"`
+	FileExtension    string                 `json:"file_extension"`
+	Type             string                 `json:"type"`
+	Category         string                 `json:"category,omitempty"`
+	Width            int                    `json:"width,omitempty"`
+	Height           int                    `json:"height,omitempty"`
+	Duration         int                    `json:"duration,omitempty"`
+	URL              string                 `json:"url"`
+	AltText          string                 `json:"alt_text,omitempty"`
+	Description      string                 `json:"description,omitempty"`
+	Caption          string                 `json:"caption,omitempty"`
+	UploadedBy       string                 `json:"uploaded_by"`
+	IsPublic         bool                   `json:"is_public"`
+	ViewCount        int64                  `json:"view_count"`
+	DownloadCount    int64                  `json:"download_count"`
+	RelatedTo        string                 `json:"related_to,omitempty"`
+	RelatedID        string                 `json:"related_id,omitempty"`
+	IsProcessed      bool                   `json:"is_processed"`
+	ProcessingStatus string                 `json:"processing_status"`
+	StorageProvider  string                 `json:"storage_provider"`
+	Thumbnails       []MediaVariant         `json:"thumbnails,omitempty"`
+	Variants         []MediaVariant         `json:"variants,omitempty"`
+	ExpiresAt        *time.Time             `json:"expires_at,omitempty"`
+	IsExpired        bool                   `json:"is_expired"`
+	Metadata         map[string]interface{} `json:"metadata,omitempty"`
+	Tags             []string               `json:"tags,omitempty"`
+	CreatedAt        time.Time              `json:"created_at"`
+	UpdatedAt        time.Time              `json:"updated_at"`
 }
 
-// CreateMediaRequest represents media upload request
+// CreateMediaRequest represents the request to upload media
 type CreateMediaRequest struct {
-	OriginalName string     `json:"original_name" validate:"required"`
-	Type         string     `json:"type" validate:"required,oneof=image video audio document"`
-	Category     string     `json:"category,omitempty"`
-	IsPublic     bool       `json:"is_public"`
-	AltText      string     `json:"alt_text,omitempty" validate:"max=200"`
-	Description  string     `json:"description,omitempty" validate:"max=1000"`
-	RelatedTo    string     `json:"related_to,omitempty"`
-	RelatedID    string     `json:"related_id,omitempty"`
-	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+	Type        string                 `json:"type" validate:"required,oneof=image video audio document"`
+	Category    string                 `json:"category,omitempty"`
+	AltText     string                 `json:"alt_text,omitempty" validate:"max=250"`
+	Description string                 `json:"description,omitempty" validate:"max=1000"`
+	Caption     string                 `json:"caption,omitempty" validate:"max=500"`
+	RelatedTo   string                 `json:"related_to,omitempty"`
+	RelatedID   string                 `json:"related_id,omitempty"`
+	IsPublic    bool                   `json:"is_public"`
+	ExpiresAt   *time.Time             `json:"expires_at,omitempty"`
+	Tags        []string               `json:"tags,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// UpdateMediaRequest represents media update request
+// UpdateMediaRequest represents the request to update media
 type UpdateMediaRequest struct {
-	AltText     *string `json:"alt_text,omitempty" validate:"omitempty,max=200"`
-	Description *string `json:"description,omitempty" validate:"omitempty,max=1000"`
-	IsPublic    *bool   `json:"is_public,omitempty"`
+	AltText     *string  `json:"alt_text,omitempty" validate:"omitempty,max=250"`
+	Description *string  `json:"description,omitempty" validate:"omitempty,max=1000"`
+	Caption     *string  `json:"caption,omitempty" validate:"omitempty,max=500"`
+	IsPublic    *bool    `json:"is_public,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
 }
 
+// MediaSearchRequest represents media search parameters
+type MediaSearchRequest struct {
+	Query    string   `json:"query" validate:"required,min=2"`
+	Type     string   `json:"type,omitempty" validate:"omitempty,oneof=image video audio document"`
+	Category string   `json:"category,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
+	UserID   string   `json:"user_id,omitempty"`
+	IsPublic *bool    `json:"is_public,omitempty"`
+	Page     int      `json:"page,omitempty" validate:"min=1"`
+	Limit    int      `json:"limit,omitempty" validate:"min=1,max=50"`
+}
 
 // Methods for Media model
 
@@ -162,17 +168,13 @@ func (m *Media) BeforeCreate() {
 	m.BaseModel.BeforeCreate()
 
 	// Set default values
+	m.ViewCount = 0
+	m.DownloadCount = 0
 	m.IsProcessed = false
 	m.ProcessingStatus = "pending"
-	m.IsPublic = true
-	m.DownloadCount = 0
-	m.ViewCount = 0
-	m.IsModerated = false
-	m.ModerationStatus = "pending"
-	m.IsReported = false
-	m.ReportsCount = 0
 	m.IsExpired = false
-	m.StorageProvider = "local" // Default to local storage
+	m.IsModerationRequired = false
+	m.ModerationStatus = "pending"
 
 	// Set default access policy
 	if m.AccessPolicy == "" {
@@ -182,11 +184,16 @@ func (m *Media) BeforeCreate() {
 			m.AccessPolicy = "private"
 		}
 	}
+
+	// Set default storage provider
+	if m.StorageProvider == "" {
+		m.StorageProvider = "local"
+	}
 }
 
-// ToMediaResponse converts Media to MediaResponse
+// ToMediaResponse converts Media model to MediaResponse
 func (m *Media) ToMediaResponse() MediaResponse {
-	return MediaResponse{
+	response := MediaResponse{
 		ID:               m.ID.Hex(),
 		OriginalName:     m.OriginalName,
 		FileName:         m.FileName,
@@ -195,44 +202,36 @@ func (m *Media) ToMediaResponse() MediaResponse {
 		FileExtension:    m.FileExtension,
 		Type:             m.Type,
 		Category:         m.Category,
-		UploadedBy:       m.UploadedBy.Hex(),
 		Width:            m.Width,
 		Height:           m.Height,
 		Duration:         m.Duration,
-		IsProcessed:      m.IsProcessed,
-		ProcessingStatus: m.ProcessingStatus,
-		Thumbnails:       m.Thumbnails,
-		Variants:         m.Variants,
 		URL:              m.URL,
-		ThumbnailURL:     m.ThumbnailURL,
-		CDNUrl:           m.CDNUrl,
-		IsPublic:         m.IsPublic,
-		DownloadCount:    m.DownloadCount,
-		ViewCount:        m.ViewCount,
-		ModerationStatus: m.ModerationStatus,
 		AltText:          m.AltText,
 		Description:      m.Description,
+		Caption:          m.Caption,
+		UploadedBy:       m.UploadedBy.Hex(),
+		IsPublic:         m.IsPublic,
+		ViewCount:        m.ViewCount,
+		DownloadCount:    m.DownloadCount,
+		RelatedTo:        m.RelatedTo,
+		IsProcessed:      m.IsProcessed,
+		ProcessingStatus: m.ProcessingStatus,
+		StorageProvider:  m.StorageProvider,
+		Thumbnails:       m.Thumbnails,
+		Variants:         m.Variants,
 		ExpiresAt:        m.ExpiresAt,
 		IsExpired:        m.IsExpired,
+		Metadata:         m.Metadata,
+		Tags:             m.Tags,
 		CreatedAt:        m.CreatedAt,
 		UpdatedAt:        m.UpdatedAt,
 	}
-}
 
-// MarkAsProcessed marks the media as processed
-func (m *Media) MarkAsProcessed() {
-	m.IsProcessed = true
-	m.ProcessingStatus = "completed"
-	now := time.Now()
-	m.ProcessedAt = &now
-	m.BeforeUpdate()
-}
+	if m.RelatedID != nil {
+		response.RelatedID = m.RelatedID.Hex()
+	}
 
-// MarkProcessingFailed marks the media processing as failed
-func (m *Media) MarkProcessingFailed(error string) {
-	m.ProcessingStatus = "failed"
-	m.ProcessingError = error
-	m.BeforeUpdate()
+	return response
 }
 
 // IncrementViewCount increments the view count
@@ -247,28 +246,20 @@ func (m *Media) IncrementDownloadCount() {
 	m.BeforeUpdate()
 }
 
-// CanAccessMedia checks if a user can access this media
-func (m *Media) CanAccessMedia(currentUserID primitive.ObjectID) bool {
-	// Owner can always access
-	if m.UploadedBy == currentUserID {
-		return true
-	}
+// MarkAsProcessed marks the media as processed
+func (m *Media) MarkAsProcessed() {
+	m.IsProcessed = true
+	m.ProcessingStatus = "completed"
+	now := time.Now()
+	m.ProcessedAt = &now
+	m.BeforeUpdate()
+}
 
-	// Check if public
-	if m.IsPublic && m.AccessPolicy == "public" {
-		return true
-	}
-
-	// Check if user is in allowed users list
-	if m.AccessPolicy == "restricted" {
-		for _, allowedUserID := range m.AllowedUsers {
-			if allowedUserID == currentUserID {
-				return true
-			}
-		}
-	}
-
-	return false
+// MarkProcessingFailed marks processing as failed
+func (m *Media) MarkProcessingFailed() {
+	m.IsProcessed = false
+	m.ProcessingStatus = "failed"
+	m.BeforeUpdate()
 }
 
 // CheckExpiration checks and updates expiration status
@@ -279,39 +270,117 @@ func (m *Media) CheckExpiration() {
 	}
 }
 
-
-// GetMediaTypes returns all supported media types
-func GetMediaTypes() []string {
-	return []string{"image", "video", "audio", "document"}
+// AddThumbnail adds a thumbnail variant
+func (m *Media) AddThumbnail(variant MediaVariant) {
+	variant.CreatedAt = time.Now()
+	m.Thumbnails = append(m.Thumbnails, variant)
+	m.BeforeUpdate()
 }
 
-// IsValidMediaType checks if a media type is valid
-func IsValidMediaType(mediaType string) bool {
-	validTypes := GetMediaTypes()
-	for _, validType := range validTypes {
-		if mediaType == validType {
+// AddVariant adds a media variant
+func (m *Media) AddVariant(variant MediaVariant) {
+	variant.CreatedAt = time.Now()
+	m.Variants = append(m.Variants, variant)
+	m.BeforeUpdate()
+}
+
+// GetVariantURL returns URL for a specific variant
+func (m *Media) GetVariantURL(variantName string) string {
+	// Check thumbnails first
+	for _, thumb := range m.Thumbnails {
+		if thumb.Name == variantName {
+			return thumb.URL
+		}
+	}
+
+	// Check variants
+	for _, variant := range m.Variants {
+		if variant.Name == variantName {
+			return variant.URL
+		}
+	}
+
+	// Return original URL if variant not found
+	return m.URL
+}
+
+// HasThumbnail checks if media has a specific thumbnail
+func (m *Media) HasThumbnail(name string) bool {
+	for _, thumb := range m.Thumbnails {
+		if thumb.Name == name {
 			return true
 		}
 	}
 	return false
 }
 
-// GetSupportedImageFormats returns supported image formats
-func GetSupportedImageFormats() []string {
-	return []string{"jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff"}
+// GetFileExtensionFromMime returns file extension based on MIME type
+func (m *Media) GetFileExtensionFromMime() string {
+	switch m.MimeType {
+	case "image/jpeg":
+		return "jpg"
+	case "image/png":
+		return "png"
+	case "image/gif":
+		return "gif"
+	case "image/webp":
+		return "webp"
+	case "video/mp4":
+		return "mp4"
+	case "video/webm":
+		return "webm"
+	case "audio/mpeg":
+		return "mp3"
+	case "audio/wav":
+		return "wav"
+	case "application/pdf":
+		return "pdf"
+	default:
+		return m.FileExtension
+	}
 }
 
-// GetSupportedVideoFormats returns supported video formats
-func GetSupportedVideoFormats() []string {
-	return []string{"mp4", "mov", "avi", "mkv", "webm", "flv", "wmv"}
+// IsImage checks if media is an image
+func (m *Media) IsImage() bool {
+	return m.Type == "image"
 }
 
-// GetSupportedAudioFormats returns supported audio formats
-func GetSupportedAudioFormats() []string {
-	return []string{"mp3", "wav", "ogg", "aac", "flac", "m4a"}
+// IsVideo checks if media is a video
+func (m *Media) IsVideo() bool {
+	return m.Type == "video"
 }
 
-// GetSupportedDocumentFormats returns supported document formats
-func GetSupportedDocumentFormats() []string {
-	return []string{"pdf", "doc", "docx", "txt", "rtf", "odt"}
+// IsAudio checks if media is audio
+func (m *Media) IsAudio() bool {
+	return m.Type == "audio"
+}
+
+// IsDocument checks if media is a document
+func (m *Media) IsDocument() bool {
+	return m.Type == "document"
+}
+
+// GetAspectRatio returns aspect ratio for images/videos
+func (m *Media) GetAspectRatio() float64 {
+	if m.Height == 0 {
+		return 0
+	}
+	return float64(m.Width) / float64(m.Height)
+}
+
+// GetFormattedFileSize returns human-readable file size
+func (m *Media) GetFormattedFileSize() string {
+	const unit = 1024
+	if m.FileSize < unit {
+		return fmt.Sprintf("%d B", m.FileSize)
+	}
+
+	div, exp := int64(unit), 0
+	for n := m.FileSize / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+
+	units := []string{"KB", "MB", "GB", "TB"}
+	return fmt.Sprintf("%.1f %s", float64(m.FileSize)/float64(div), units[exp])
 }

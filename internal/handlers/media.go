@@ -469,7 +469,7 @@ func (h *MediaHandler) BulkUploadMedia(c *gin.Context) {
 	if len(results) > 0 {
 		utils.CreatedResponse(c, "Bulk upload completed", response)
 	} else {
-		utils.BadRequestResponse(c, "All uploads failed", response)
+		utils.BadRequestResponse(c, "All uploads failed", nil)
 	}
 }
 

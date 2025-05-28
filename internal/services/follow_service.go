@@ -48,9 +48,9 @@ func (fs *FollowService) FollowUser(followerID, followeeID primitive.ObjectID) (
 	}).Decode(&existingFollow)
 
 	if err == nil {
-		if existingFollow.Status == models.FollowAccepted {
+		if existingFollow.Status == models.FollowStatusAccepted {
 			return nil, errors.New("already following this user")
-		} else if existingFollow.Status == models.FollowPending {
+		} else if existingFollow.Status == models.FollowStatusPending {
 			return nil, errors.New("follow request already pending")
 		}
 	}
@@ -66,13 +66,14 @@ func (fs *FollowService) FollowUser(followerID, followeeID primitive.ObjectID) (
 	follow := &models.Follow{
 		FollowerID: followerID,
 		FolloweeID: followeeID,
-		Status:     models.FollowPending,
+		Status:     models.FollowStatusPending,
 	}
 
-	// Auto-approve if user has public profile or no privacy restrictions
-	if !followee.PrivacySettings.RequireApprovalToFollow {
-		follow.Status = models.FollowAccepted
-		follow.AcceptedAt = &[]time.Time{time.Now()}[0]
+	// Auto-approve if user has public profile
+	if !followee.IsPrivate {
+		follow.Status = models.FollowStatusAccepted
+		now := time.Now()
+		follow.AcceptedAt = &now
 	}
 
 	follow.BeforeCreate()
@@ -85,7 +86,7 @@ func (fs *FollowService) FollowUser(followerID, followeeID primitive.ObjectID) (
 	follow.ID = result.InsertedID.(primitive.ObjectID)
 
 	// Update user follow counts if accepted
-	if follow.Status == models.FollowAccepted {
+	if follow.Status == models.FollowStatusAccepted {
 		go fs.updateFollowCounts(followerID, followeeID, true)
 	}
 
@@ -128,7 +129,7 @@ func (fs *FollowService) UnfollowUser(followerID, followeeID primitive.ObjectID)
 	}
 
 	// Update follow counts if it was accepted
-	if follow.Status == models.FollowAccepted {
+	if follow.Status == models.FollowStatusAccepted {
 		go fs.updateFollowCounts(followerID, followeeID, false)
 	}
 
@@ -144,7 +145,7 @@ func (fs *FollowService) GetFollowers(userID primitive.ObjectID, currentUserID *
 		{
 			"$match": bson.M{
 				"followee_id": userID,
-				"status":      models.FollowAccepted,
+				"status":      models.FollowStatusAccepted,
 				"deleted_at":  bson.M{"$exists": false},
 			},
 		},
@@ -189,15 +190,17 @@ func (fs *FollowService) GetFollowers(userID primitive.ObjectID, currentUserID *
 	var followers []models.FollowResponse
 	for _, result := range results {
 		followResponse := models.FollowResponse{
-			ID:        result.Follow.ID,
-			User:      result.Follower.ToUserResponse(),
-			Status:    result.Follow.Status,
-			CreatedAt: result.Follow.CreatedAt,
-		}
-
-		// Add current user context if provided
-		if currentUserID != nil {
-			followResponse.IsFollowedByCurrentUser = fs.isFollowing(ctx, *currentUserID, result.Follower.ID)
+			ID:                   result.Follow.ID.Hex(),
+			FollowerID:           result.Follow.FollowerID.Hex(),
+			FolloweeID:           result.Follow.FolloweeID.Hex(),
+			Follower:             result.Follower.ToUserResponse(),
+			Status:               result.Follow.Status,
+			RequestedAt:          result.Follow.RequestedAt,
+			AcceptedAt:           result.Follow.AcceptedAt,
+			NotificationsEnabled: result.Follow.NotificationsEnabled,
+			ShowInFeed:           result.Follow.ShowInFeed,
+			Categories:           result.Follow.Categories,
+			CreatedAt:            result.Follow.CreatedAt,
 		}
 
 		followers = append(followers, followResponse)
@@ -215,7 +218,7 @@ func (fs *FollowService) GetFollowing(userID primitive.ObjectID, currentUserID *
 		{
 			"$match": bson.M{
 				"follower_id": userID,
-				"status":      models.FollowAccepted,
+				"status":      models.FollowStatusAccepted,
 				"deleted_at":  bson.M{"$exists": false},
 			},
 		},
@@ -260,15 +263,17 @@ func (fs *FollowService) GetFollowing(userID primitive.ObjectID, currentUserID *
 	var following []models.FollowResponse
 	for _, result := range results {
 		followResponse := models.FollowResponse{
-			ID:        result.Follow.ID,
-			User:      result.Followee.ToUserResponse(),
-			Status:    result.Follow.Status,
-			CreatedAt: result.Follow.CreatedAt,
-		}
-
-		// Add current user context if provided
-		if currentUserID != nil && *currentUserID != userID {
-			followResponse.IsFollowedByCurrentUser = fs.isFollowing(ctx, *currentUserID, result.Followee.ID)
+			ID:                   result.Follow.ID.Hex(),
+			FollowerID:           result.Follow.FollowerID.Hex(),
+			FolloweeID:           result.Follow.FolloweeID.Hex(),
+			Followee:             result.Followee.ToUserResponse(),
+			Status:               result.Follow.Status,
+			RequestedAt:          result.Follow.RequestedAt,
+			AcceptedAt:           result.Follow.AcceptedAt,
+			NotificationsEnabled: result.Follow.NotificationsEnabled,
+			ShowInFeed:           result.Follow.ShowInFeed,
+			Categories:           result.Follow.Categories,
+			CreatedAt:            result.Follow.CreatedAt,
 		}
 
 		following = append(following, followResponse)
@@ -286,7 +291,7 @@ func (fs *FollowService) GetPendingFollowRequests(userID primitive.ObjectID, lim
 		{
 			"$match": bson.M{
 				"followee_id": userID,
-				"status":      models.FollowPending,
+				"status":      models.FollowStatusPending,
 				"deleted_at":  bson.M{"$exists": false},
 			},
 		},
@@ -331,10 +336,12 @@ func (fs *FollowService) GetPendingFollowRequests(userID primitive.ObjectID, lim
 	var requests []models.FollowResponse
 	for _, result := range results {
 		requests = append(requests, models.FollowResponse{
-			ID:        result.Follow.ID,
-			User:      result.Follower.ToUserResponse(),
-			Status:    result.Follow.Status,
-			CreatedAt: result.Follow.CreatedAt,
+			ID:         result.Follow.ID.Hex(),
+			FollowerID: result.Follow.FollowerID.Hex(),
+			FolloweeID: result.Follow.FolloweeID.Hex(),
+			Follower:   result.Follower.ToUserResponse(),
+			Status:     result.Follow.Status,
+			CreatedAt:  result.Follow.CreatedAt,
 		})
 	}
 
@@ -350,7 +357,7 @@ func (fs *FollowService) GetSentFollowRequests(userID primitive.ObjectID, limit,
 		{
 			"$match": bson.M{
 				"follower_id": userID,
-				"status":      models.FollowPending,
+				"status":      models.FollowStatusPending,
 				"deleted_at":  bson.M{"$exists": false},
 			},
 		},
@@ -395,10 +402,12 @@ func (fs *FollowService) GetSentFollowRequests(userID primitive.ObjectID, limit,
 	var requests []models.FollowResponse
 	for _, result := range results {
 		requests = append(requests, models.FollowResponse{
-			ID:        result.Follow.ID,
-			User:      result.Followee.ToUserResponse(),
-			Status:    result.Follow.Status,
-			CreatedAt: result.Follow.CreatedAt,
+			ID:         result.Follow.ID.Hex(),
+			FollowerID: result.Follow.FollowerID.Hex(),
+			FolloweeID: result.Follow.FolloweeID.Hex(),
+			Followee:   result.Followee.ToUserResponse(),
+			Status:     result.Follow.Status,
+			CreatedAt:  result.Follow.CreatedAt,
 		})
 	}
 
@@ -415,7 +424,7 @@ func (fs *FollowService) AcceptFollowRequest(followID, userID primitive.ObjectID
 	err := fs.followCollection.FindOne(ctx, bson.M{
 		"_id":         followID,
 		"followee_id": userID,
-		"status":      models.FollowPending,
+		"status":      models.FollowStatusPending,
 		"deleted_at":  bson.M{"$exists": false},
 	}).Decode(&follow)
 
@@ -430,7 +439,7 @@ func (fs *FollowService) AcceptFollowRequest(followID, userID primitive.ObjectID
 	now := time.Now()
 	update := bson.M{
 		"$set": bson.M{
-			"status":      models.FollowAccepted,
+			"status":      models.FollowStatusAccepted,
 			"accepted_at": now,
 			"updated_at":  now,
 		},
@@ -457,7 +466,7 @@ func (fs *FollowService) RejectFollowRequest(followID, userID primitive.ObjectID
 	err := fs.followCollection.FindOne(ctx, bson.M{
 		"_id":         followID,
 		"followee_id": userID,
-		"status":      models.FollowPending,
+		"status":      models.FollowStatusPending,
 		"deleted_at":  bson.M{"$exists": false},
 	}).Decode(&follow)
 
@@ -468,11 +477,10 @@ func (fs *FollowService) RejectFollowRequest(followID, userID primitive.ObjectID
 		return err
 	}
 
-	// Soft delete the request
+	// Soft delete the request (rejection means just deleting it)
 	now := time.Now()
 	update := bson.M{
 		"$set": bson.M{
-			"status":     models.FollowRejected,
 			"deleted_at": now,
 			"updated_at": now,
 		},
@@ -492,7 +500,7 @@ func (fs *FollowService) CancelFollowRequest(followID, userID primitive.ObjectID
 	err := fs.followCollection.FindOne(ctx, bson.M{
 		"_id":         followID,
 		"follower_id": userID,
-		"status":      models.FollowPending,
+		"status":      models.FollowStatusPending,
 		"deleted_at":  bson.M{"$exists": false},
 	}).Decode(&follow)
 
@@ -525,7 +533,7 @@ func (fs *FollowService) RemoveFollower(userID, followerID primitive.ObjectID) e
 	filter := bson.M{
 		"follower_id": followerID,
 		"followee_id": userID,
-		"status":      models.FollowAccepted,
+		"status":      models.FollowStatusAccepted,
 		"deleted_at":  bson.M{"$exists": false},
 	}
 
@@ -559,14 +567,14 @@ func (fs *FollowService) RemoveFollower(userID, followerID primitive.ObjectID) e
 }
 
 // GetFollowStats retrieves follow statistics for a user
-func (fs *FollowService) GetFollowStats(userID primitive.ObjectID) (*models.FollowStats, error) {
+func (fs *FollowService) GetFollowStats(userID primitive.ObjectID) (*models.FollowStatsResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	// Get followers count
 	followersCount, err := fs.followCollection.CountDocuments(ctx, bson.M{
 		"followee_id": userID,
-		"status":      models.FollowAccepted,
+		"status":      models.FollowStatusAccepted,
 		"deleted_at":  bson.M{"$exists": false},
 	})
 	if err != nil {
@@ -576,27 +584,17 @@ func (fs *FollowService) GetFollowStats(userID primitive.ObjectID) (*models.Foll
 	// Get following count
 	followingCount, err := fs.followCollection.CountDocuments(ctx, bson.M{
 		"follower_id": userID,
-		"status":      models.FollowAccepted,
+		"status":      models.FollowStatusAccepted,
 		"deleted_at":  bson.M{"$exists": false},
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Get pending requests count
-	pendingRequestsCount, err := fs.followCollection.CountDocuments(ctx, bson.M{
-		"followee_id": userID,
-		"status":      models.FollowPending,
-		"deleted_at":  bson.M{"$exists": false},
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return &models.FollowStats{
-		FollowersCount:       followersCount,
-		FollowingCount:       followingCount,
-		PendingRequestsCount: pendingRequestsCount,
+	return &models.FollowStatsResponse{
+		UserID:         userID.Hex(),
+		FollowersCount: followersCount,
+		FollowingCount: followingCount,
 	}, nil
 }
 
@@ -633,7 +631,7 @@ func (fs *FollowService) GetMutualFollows(userID1, userID2 primitive.ObjectID, l
 		{
 			"$match": bson.M{
 				"follower_id": userID1,
-				"status":      models.FollowAccepted,
+				"status":      models.FollowStatusAccepted,
 				"deleted_at":  bson.M{"$exists": false},
 			},
 		},
@@ -647,9 +645,9 @@ func (fs *FollowService) GetMutualFollows(userID1, userID2 primitive.ObjectID, l
 						"$match": bson.M{
 							"$expr": bson.M{
 								"$and": []bson.M{
-									{"$eq": []string{"$follower_id", userID2.Hex()}},
+									{"$eq": []interface{}{"$follower_id", userID2}},
 									{"$eq": []string{"$followee_id", "$$followee_id"}},
-									{"$eq": []string{"$status", string(models.FollowAccepted)}},
+									{"$eq": []string{"$status", string(models.FollowStatusAccepted)}},
 									{"$not": bson.M{"$ifNull": []interface{}{"$deleted_at", false}}},
 								},
 							},
@@ -719,7 +717,7 @@ func (fs *FollowService) GetSuggestedUsers(userID primitive.ObjectID, limit int)
 		{
 			"$match": bson.M{
 				"followee_id": userID,
-				"status":      models.FollowAccepted,
+				"status":      models.FollowStatusAccepted,
 				"deleted_at":  bson.M{"$exists": false},
 			},
 		},
@@ -734,7 +732,7 @@ func (fs *FollowService) GetSuggestedUsers(userID primitive.ObjectID, limit int)
 							"$expr": bson.M{
 								"$and": []bson.M{
 									{"$eq": []string{"$follower_id", "$$follower_id"}},
-									{"$eq": []string{"$status", string(models.FollowAccepted)}},
+									{"$eq": []string{"$status", string(models.FollowStatusAccepted)}},
 									{"$not": bson.M{"$ifNull": []interface{}{"$deleted_at", false}}},
 								},
 							},
@@ -850,13 +848,13 @@ func (fs *FollowService) GetFollowActivity(userID primitive.ObjectID, activityTy
 	switch activityType {
 	case "new_followers":
 		filter["followee_id"] = userID
-		filter["status"] = models.FollowAccepted
+		filter["status"] = models.FollowStatusAccepted
 	case "new_following":
 		filter["follower_id"] = userID
-		filter["status"] = models.FollowAccepted
+		filter["status"] = models.FollowStatusAccepted
 	case "follow_requests":
 		filter["followee_id"] = userID
-		filter["status"] = models.FollowPending
+		filter["status"] = models.FollowStatusPending
 	default: // "all"
 		filter["$or"] = []bson.M{
 			{"followee_id": userID},
@@ -894,7 +892,7 @@ func (fs *FollowService) GetFollowActivity(userID primitive.ObjectID, activityTy
 			relatedUserID = follow.FolloweeID
 		}
 
-		if follow.Status == models.FollowPending {
+		if follow.Status == models.FollowStatusPending {
 			activityType = "follow_request"
 		}
 
@@ -929,7 +927,7 @@ func (fs *FollowService) isFollowing(ctx context.Context, followerID, followeeID
 	count, err := fs.followCollection.CountDocuments(ctx, bson.M{
 		"follower_id": followerID,
 		"followee_id": followeeID,
-		"status":      models.FollowAccepted,
+		"status":      models.FollowStatusAccepted,
 		"deleted_at":  bson.M{"$exists": false},
 	})
 	return err == nil && count > 0

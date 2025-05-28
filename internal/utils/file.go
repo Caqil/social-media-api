@@ -455,3 +455,120 @@ func GetFileHash(filePath string) (string, error) {
 func StringToInt(s string) (int, error) {
 	return strconv.Atoi(s)
 }
+
+// InferMediaTypeFromExtension infers media type category from file extension
+func InferMediaTypeFromExtension(ext string) string {
+	ext = strings.ToLower(ext)
+
+	// Remove leading dot if present
+	if strings.HasPrefix(ext, ".") {
+		ext = strings.TrimPrefix(ext, ".")
+	}
+
+	// Image extensions
+	imageExts := []string{"jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "svg"}
+	for _, imgExt := range imageExts {
+		if ext == imgExt {
+			return "image"
+		}
+	}
+
+	// Video extensions
+	videoExts := []string{"mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v"}
+	for _, vidExt := range videoExts {
+		if ext == vidExt {
+			return "video"
+		}
+	}
+
+	// Audio extensions
+	audioExts := []string{"mp3", "wav", "ogg", "aac", "flac", "m4a", "wma"}
+	for _, audExt := range audioExts {
+		if ext == audExt {
+			return "audio"
+		}
+	}
+
+	// Document extensions
+	docExts := []string{"pdf", "doc", "docx", "txt", "rtf", "odt", "xls", "xlsx", "ppt", "pptx"}
+	for _, docExt := range docExts {
+		if ext == docExt {
+			return "document"
+		}
+	}
+
+	return "unknown"
+}
+
+// IsValidMediaType checks if the media type is supported
+func IsValidMediaType(mediaType string) bool {
+	validTypes := []string{"image", "video", "audio", "document"}
+
+	for _, validType := range validTypes {
+		if mediaType == validType {
+			return true
+		}
+	}
+
+	return false
+}
+
+// GetAllowedExtensionsForType returns allowed file extensions for a media type
+func GetAllowedExtensionsForType(mediaType string) []string {
+	switch mediaType {
+	case "image":
+		return []string{"jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff"}
+	case "video":
+		return []string{"mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v"}
+	case "audio":
+		return []string{"mp3", "wav", "ogg", "aac", "flac", "m4a", "wma"}
+	case "document":
+		return []string{"pdf", "doc", "docx", "txt", "rtf", "odt", "xls", "xlsx", "ppt", "pptx"}
+	default:
+		return []string{}
+	}
+}
+
+// IsAllowedExtensionForType checks if file extension is allowed for media type
+func IsAllowedExtensionForType(filename, mediaType string) bool {
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(filename), "."))
+	allowedExts := GetAllowedExtensionsForType(mediaType)
+
+	for _, allowedExt := range allowedExts {
+		if ext == allowedExt {
+			return true
+		}
+	}
+
+	return false
+}
+
+// ValidateMediaFile performs comprehensive media file validation
+func ValidateMediaFile(header *multipart.FileHeader, mediaType string) error {
+	if header == nil {
+		return fmt.Errorf("no file provided")
+	}
+
+	// Validate filename
+	if err := ValidateFileName(header.Filename); err != nil {
+		return fmt.Errorf("invalid filename: %v", err)
+	}
+
+	// Validate media type
+	if !IsValidMediaType(mediaType) {
+		return fmt.Errorf("unsupported media type: %s", mediaType)
+	}
+
+	// Validate file extension for media type
+	if !IsAllowedExtensionForType(header.Filename, mediaType) {
+		ext := filepath.Ext(header.Filename)
+		return fmt.Errorf("file extension %s not allowed for media type %s", ext, mediaType)
+	}
+
+	// Validate file size
+	if err := ValidateFileSize(header.Size, mediaType); err != nil {
+		return err
+	}
+
+	return nil
+}

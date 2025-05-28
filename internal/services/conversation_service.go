@@ -725,3 +725,205 @@ func (cs *ConversationService) GetConversationStats(conversationID, userID primi
 		LastActivityHours:   0, // Calculate based on last_activity_at
 	}, nil
 }
+
+// Add these methods to internal/services/conversation_service.go
+
+// MuteConversation mutes/unmutes a conversation for a user
+func (cs *ConversationService) MuteConversation(conversationID, userID primitive.ObjectID, muted bool, muteUntil *time.Time) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Verify user is participant
+	count, err := cs.conversationCollection.CountDocuments(ctx, bson.M{
+		"_id":          conversationID,
+		"participants": userID,
+		"deleted_at":   bson.M{"$exists": false},
+	})
+
+	if err != nil || count == 0 {
+		return errors.New("conversation not found or access denied")
+	}
+
+	// Update participant's mute status
+	filter := bson.M{
+		"_id":                      conversationID,
+		"participant_info.user_id": userID,
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"participant_info.$.is_muted": muted,
+			"updated_at":                  time.Now(),
+		},
+	}
+
+	if muteUntil != nil {
+		update["$set"].(bson.M)["participant_info.$.mute_until"] = muteUntil
+	} else {
+		update["$unset"] = bson.M{
+			"participant_info.$.mute_until": "",
+		}
+	}
+
+	_, err = cs.conversationCollection.UpdateOne(ctx, filter, update)
+	return err
+}
+
+// GetUnreadCounts returns unread message counts for all user's conversations
+func (cs *ConversationService) GetUnreadCounts(userID primitive.ObjectID) (map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// Get user's conversations
+	conversations, err := cs.GetUserConversations(userID, 100, 0) // Get first 100 conversations
+	if err != nil {
+		return nil, err
+	}
+
+	totalUnread := int64(0)
+	conversationCounts := make([]map[string]interface{}, 0)
+
+	for _, conv := range conversations {
+		convObjectID, err := primitive.ObjectIDFromHex(conv.ID)
+		if err != nil {
+			continue // Skip invalid IDs
+		}
+
+		unreadCount := cs.getUnreadCount(ctx, convObjectID, userID)
+		totalUnread += unreadCount
+
+		if unreadCount > 0 {
+			conversationCounts = append(conversationCounts, map[string]interface{}{
+				"conversation_id": conv.ID,
+				"unread_count":    unreadCount,
+				"title":           conv.Title,
+				"type":            conv.Type,
+			})
+		}
+	}
+
+	return map[string]interface{}{
+		"total_unread":  totalUnread,
+		"conversations": conversationCounts,
+	}, nil
+}
+
+// SearchUserConversations searches user's conversations by title or participant names
+func (cs *ConversationService) SearchUserConversations(userID primitive.ObjectID, query string, limit, skip int) ([]models.ConversationResponse, int64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// Build search filter
+	filter := bson.M{
+		"participants": userID,
+		"is_active":    true,
+		"deleted_at":   bson.M{"$exists": false},
+		"$or": []bson.M{
+			{"title": bson.M{"$regex": query, "$options": "i"}},
+			{"description": bson.M{"$regex": query, "$options": "i"}},
+		},
+	}
+
+	// Get total count for pagination
+	totalCount, err := cs.conversationCollection.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get conversations
+	opts := options.Find().
+		SetLimit(int64(limit)).
+		SetSkip(int64(skip)).
+		SetSort(bson.M{"last_activity_at": -1})
+
+	cursor, err := cs.conversationCollection.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(ctx)
+
+	var conversations []models.Conversation
+	if err := cursor.All(ctx, &conversations); err != nil {
+		return nil, 0, err
+	}
+
+	// Convert to response format
+	var responses []models.ConversationResponse
+	for _, conv := range conversations {
+		// Populate participant information
+		cs.populateConversationUsers(ctx, &conv)
+
+		// Convert to response
+		response := conv.ToConversationResponse()
+
+		// Set user-specific context
+		response.UnreadCount = cs.getUnreadCount(ctx, conv.ID, userID)
+		response.IsUserAdmin = conv.IsAdmin(userID)
+		response.UserRole = conv.GetParticipantRole(userID)
+		response.CanSendMessages = conv.CanSendMessages(userID)
+		response.CanAddMembers = conv.CanAddMembers(userID)
+
+		responses = append(responses, response)
+	}
+
+	return responses, totalCount, nil
+}
+
+// GetUserConversationsWithTotal returns conversations with total count for proper pagination
+func (cs *ConversationService) GetUserConversationsWithTotal(userID primitive.ObjectID, limit, skip int) ([]models.ConversationResponse, int64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	filter := bson.M{
+		"participants": userID,
+		"is_active":    true,
+		"deleted_at":   bson.M{"$exists": false},
+	}
+
+	// Get total count
+	totalCount, err := cs.conversationCollection.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get conversations
+	opts := options.Find().
+		SetLimit(int64(limit)).
+		SetSkip(int64(skip)).
+		SetSort(bson.M{"last_activity_at": -1})
+
+	cursor, err := cs.conversationCollection.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(ctx)
+
+	var conversations []models.Conversation
+	if err := cursor.All(ctx, &conversations); err != nil {
+		return nil, 0, err
+	}
+
+	// Convert to response format
+	var responses []models.ConversationResponse
+	for _, conv := range conversations {
+		// Populate participant information
+		cs.populateConversationUsers(ctx, &conv)
+
+		// Convert to response
+		response := conv.ToConversationResponse()
+
+		// Set user-specific context
+		response.UnreadCount = cs.getUnreadCount(ctx, conv.ID, userID)
+		response.IsUserAdmin = conv.IsAdmin(userID)
+		response.UserRole = conv.GetParticipantRole(userID)
+		response.CanSendMessages = conv.CanSendMessages(userID)
+		response.CanAddMembers = conv.CanAddMembers(userID)
+
+		// Get typing users
+		response.TypingUsers = cs.getTypingUsers(ctx, conv.ID, userID)
+
+		responses = append(responses, response)
+	}
+
+	return responses, totalCount, nil
+}

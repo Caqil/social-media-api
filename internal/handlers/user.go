@@ -386,7 +386,8 @@ func (h *UserHandler) VerifyUser(c *gin.Context) {
 		return
 	}
 
-	if currentUser.Role != models.AdminRole && currentUser.Role != models.SuperAdminRole {
+	// FIXED: Use correct role constants
+	if currentUser.Role != models.RoleAdmin && currentUser.Role != models.RoleSuperAdmin {
 		utils.ForbiddenResponse(c, "Insufficient permissions")
 		return
 	}
@@ -429,7 +430,8 @@ func (h *UserHandler) SuspendUser(c *gin.Context) {
 		return
 	}
 
-	if currentUser.Role != models.AdminRole && currentUser.Role != models.SuperAdminRole {
+	// FIXED: Use correct role constants
+	if currentUser.Role != models.RoleAdmin && currentUser.Role != models.RoleSuperAdmin {
 		utils.ForbiddenResponse(c, "Insufficient permissions")
 		return
 	}
@@ -482,7 +484,8 @@ func (h *UserHandler) UnsuspendUser(c *gin.Context) {
 		return
 	}
 
-	if currentUser.Role != models.AdminRole && currentUser.Role != models.SuperAdminRole {
+	// FIXED: Use correct role constants
+	if currentUser.Role != models.RoleAdmin && currentUser.Role != models.RoleSuperAdmin {
 		utils.ForbiddenResponse(c, "Insufficient permissions")
 		return
 	}

@@ -124,7 +124,15 @@ type BatchFollowRequest struct {
 	Categories           []string `json:"categories,omitempty"`
 }
 
-// Methods for Follow model
+// FollowActivity represents a follow activity for activity feed
+type FollowActivity struct {
+	ID            primitive.ObjectID `json:"id"`
+	Type          string             `json:"type"` // "new_follower", "new_following", "follow_request"
+	RelatedUserID primitive.ObjectID `json:"related_user_id"`
+	RelatedUser   UserResponse       `json:"related_user,omitempty"`
+	Status        FollowStatus       `json:"status"`
+	CreatedAt     time.Time          `json:"created_at"`
+}
 
 // BeforeCreate sets default values before creating follow
 func (f *Follow) BeforeCreate() {

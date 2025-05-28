@@ -99,16 +99,11 @@ func (h *MessageHandler) GetConversations(c *gin.Context) {
 		return
 	}
 
-	// Convert to response format
-	var conversationResponses []models.ConversationResponse
-	for _, conversation := range conversations {
-		conversationResponses = append(conversationResponses, conversation.ToConversationResponse())
-	}
-
-	totalCount := int64(len(conversationResponses))
+	// conversations is already []models.ConversationResponse, no need to convert
+	totalCount := int64(len(conversations))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
 
-	utils.PaginatedSuccessResponse(c, "Conversations retrieved successfully", conversationResponses, paginationMeta, nil)
+	utils.PaginatedSuccessResponse(c, "Conversations retrieved successfully", conversations, paginationMeta, nil)
 }
 
 // GetConversation retrieves a specific conversation
@@ -136,7 +131,8 @@ func (h *MessageHandler) GetConversation(c *gin.Context) {
 		return
 	}
 
-	utils.OkResponse(c, "Conversation retrieved successfully", conversation.ToConversationResponse())
+	// conversation is already *models.ConversationResponse, no need to convert
+	utils.OkResponse(c, "Conversation retrieved successfully", conversation)
 }
 
 // SendMessage sends a message in a conversation
@@ -531,7 +527,12 @@ func (h *MessageHandler) AddParticipants(c *gin.Context) {
 		return
 	}
 
-	err = h.conversationService.AddParticipants(conversationID, userID.(primitive.ObjectID), req.ParticipantIDs)
+	// Create the proper request struct for the service
+	addParticipantsReq := models.AddParticipantsRequest{
+		ParticipantIDs: req.ParticipantIDs,
+	}
+
+	err = h.conversationService.AddParticipants(conversationID, userID.(primitive.ObjectID), addParticipantsReq)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "access denied") {
 			utils.NotFoundResponse(c, "Conversation not found or access denied")
@@ -612,7 +613,8 @@ func (h *MessageHandler) UpdateConversation(c *gin.Context) {
 		return
 	}
 
-	utils.OkResponse(c, "Conversation updated successfully", conversation.ToConversationResponse())
+	// conversation is already *models.ConversationResponse, no need to convert
+	utils.OkResponse(c, "Conversation updated successfully", conversation)
 }
 
 // GetMessageStats gets message statistics

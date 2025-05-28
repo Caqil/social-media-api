@@ -28,13 +28,19 @@ const (
 	MaxEventTitleLength           = 200
 
 	// Media constraints
-	MaxImageSizeMB     = 10  // 10MB
-	MaxVideoSizeMB     = 100 // 100MB
-	MaxAudioSizeMB     = 50  // 50MB
-	MaxDocumentSizeMB  = 25  // 25MB
-	MaxImageWidth      = 4096
-	MaxImageHeight     = 4096
-	MaxBulkUploadFiles = 20
+	MaxImageSizeMB            = 10  // 10MB
+	MaxVideoSizeMB            = 100 // 100MB
+	MaxAudioSizeMB            = 50  // 50MB
+	MaxDocumentSizeMB         = 25  // 25MB
+	MaxImageWidth             = 4096
+	MaxImageHeight            = 4096
+	MaxBulkUploadFiles        = 20
+	MaxAltTextLength          = 250
+	MaxMediaDescriptionLength = 1000
+	MaxMediaCaptionLength     = 500
+	MaxThumbnailSize          = 500 // pixels
+	DefaultThumbnailQuality   = 85  // JPEG quality
+	MaxMediaVariants          = 10
 	// Rate limiting
 	DefaultRateLimit       = 100 // requests per minute
 	AuthRateLimit          = 5   // login attempts per minute

@@ -4,6 +4,7 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"social-media-api/internal/config"
@@ -488,6 +489,136 @@ func (ns *NotificationService) NotifyFollow(actorID, recipientID primitive.Objec
 
 	_, err := ns.CreateNotification(req)
 	return err
+}
+
+// Add these methods to the existing NotificationService in internal/services/notification_service.go
+// Also add "fmt" import if not already present
+
+// NotifyGroupInvite creates a group invitation notification
+func (ns *NotificationService) NotifyGroupInvite(actorID, recipientID, groupID primitive.ObjectID) error {
+	if actorID == recipientID {
+		return nil
+	}
+
+	req := models.CreateNotificationRequest{
+		RecipientID:  recipientID.Hex(),
+		ActorID:      actorID.Hex(),
+		Type:         models.NotificationGroupInvite,
+		Title:        "Group Invitation",
+		Message:      "You've been invited to join a group",
+		ActionText:   "View Invitation",
+		TargetID:     groupID.Hex(),
+		TargetType:   "group",
+		TargetURL:    "/groups/" + groupID.Hex(),
+		Priority:     "medium",
+		SendViaPush:  true,
+		SendViaEmail: true,
+	}
+
+	_, err := ns.CreateNotification(req)
+	return err
+}
+
+// NotifyGroupJoinRequest creates a join request notification for group admins
+func (ns *NotificationService) NotifyGroupJoinRequest(actorID, recipientID, groupID primitive.ObjectID) error {
+	if actorID == recipientID {
+		return nil
+	}
+
+	req := models.CreateNotificationRequest{
+		RecipientID: recipientID.Hex(),
+		ActorID:     actorID.Hex(),
+		Type:        models.NotificationGroupPost, // Using existing type or create new one
+		Title:       "New Join Request",
+		Message:     "Someone wants to join your group",
+		ActionText:  "Review Request",
+		TargetID:    groupID.Hex(),
+		TargetType:  "group",
+		TargetURL:   "/groups/" + groupID.Hex() + "/members/pending",
+		Priority:    "medium",
+		SendViaPush: true,
+	}
+
+	_, err := ns.CreateNotification(req)
+	return err
+}
+
+// NotifyGroupAccepted creates a notification when join request is approved
+func (ns *NotificationService) NotifyGroupAccepted(actorID, recipientID, groupID primitive.ObjectID) error {
+	if actorID == recipientID {
+		return nil
+	}
+
+	req := models.CreateNotificationRequest{
+		RecipientID: recipientID.Hex(),
+		ActorID:     actorID.Hex(),
+		Type:        models.NotificationGroupPost,
+		Title:       "Join Request Approved",
+		Message:     "Your request to join the group has been approved",
+		ActionText:  "View Group",
+		TargetID:    groupID.Hex(),
+		TargetType:  "group",
+		TargetURL:   "/groups/" + groupID.Hex(),
+		Priority:    "medium",
+		SendViaPush: true,
+	}
+
+	_, err := ns.CreateNotification(req)
+	return err
+}
+
+// NotifyGroupRoleChanged creates a notification when member role is changed
+func (ns *NotificationService) NotifyGroupRoleChanged(actorID, recipientID, groupID primitive.ObjectID, newRole string) error {
+	if actorID == recipientID {
+		return nil
+	}
+
+	req := models.CreateNotificationRequest{
+		RecipientID: recipientID.Hex(),
+		ActorID:     actorID.Hex(),
+		Type:        models.NotificationGroupPost,
+		Title:       "Role Updated",
+		Message:     fmt.Sprintf("Your role in the group has been changed to %s", newRole),
+		ActionText:  "View Group",
+		TargetID:    groupID.Hex(),
+		TargetType:  "group",
+		TargetURL:   "/groups/" + groupID.Hex(),
+		Priority:    "medium",
+		SendViaPush: true,
+	}
+
+	_, err := ns.CreateNotification(req)
+	return err
+}
+
+// NotifyGroupPostCreated notifies group members about new posts
+func (ns *NotificationService) NotifyGroupPostCreated(actorID, groupID, postID primitive.ObjectID, memberIDs []primitive.ObjectID) error {
+	recipientIDs := make([]string, 0, len(memberIDs))
+	for _, memberID := range memberIDs {
+		if memberID != actorID { // Don't notify the author
+			recipientIDs = append(recipientIDs, memberID.Hex())
+		}
+	}
+
+	if len(recipientIDs) == 0 {
+		return nil
+	}
+
+	req := models.BulkCreateNotificationRequest{
+		RecipientIDs: recipientIDs,
+		ActorID:      actorID.Hex(),
+		Type:         models.NotificationGroupPost,
+		Title:        "New Group Post",
+		Message:      "Someone posted in your group",
+		ActionText:   "View Post",
+		TargetID:     postID.Hex(),
+		TargetType:   "post",
+		TargetURL:    "/posts/" + postID.Hex(),
+		Priority:     "low",
+		SendViaPush:  true,
+	}
+
+	return ns.CreateBulkNotifications(req)
 }
 
 // NotifyMention creates a mention notification

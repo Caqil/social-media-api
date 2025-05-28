@@ -19,13 +19,13 @@ func SetupSocialRoutes(router *gin.Engine, feedHandler *handlers.FeedHandler, se
 		feeds.GET("/following", feedHandler.GetFollowingFeed)
 		feeds.GET("/trending", feedHandler.GetTrendingFeed)
 		feeds.GET("/discover", feedHandler.GetDiscoverFeed)
-		
+
 		// Feed interactions
 		feeds.POST("/interactions", feedHandler.RecordInteraction)
 		feeds.POST("/refresh", feedHandler.RefreshFeed)
 		feeds.POST("/posts/:postId/hide", feedHandler.HidePost)
 		feeds.POST("/report-issue", feedHandler.ReportFeedIssue)
-		
+
 		// Feed preferences
 		feeds.GET("/preferences", feedHandler.GetFeedPreferences)
 		feeds.PUT("/preferences", feedHandler.UpdateFeedPreferences)
@@ -41,7 +41,7 @@ func SetupSocialRoutes(router *gin.Engine, feedHandler *handlers.FeedHandler, se
 		search.GET("/users", authMiddleware.OptionalAuth(), searchHandler.SearchUsers)
 		search.GET("/hashtags", searchHandler.SearchHashtags)
 		search.GET("/suggestions", authMiddleware.OptionalAuth(), searchHandler.GetSearchSuggestions)
-		
+
 		// Trending and popular content
 		search.GET("/trending/hashtags", searchHandler.GetTrendingHashtags)
 		search.GET("/popular", searchHandler.GetPopularSearches)
@@ -83,7 +83,7 @@ func SetupSocialRoutes(router *gin.Engine, feedHandler *handlers.FeedHandler, se
 		reactionsProtected.POST("/", middleware.LikeRateLimit(), likeHandler.CreateLike)
 		reactionsProtected.PUT("/:id", likeHandler.UpdateLike)
 		reactionsProtected.DELETE("/:targetType/:targetId", likeHandler.DeleteLike)
-		
+
 		// User reaction queries
 		reactionsProtected.GET("/:targetType/:targetId/check", likeHandler.CheckUserReaction)
 		reactionsProtected.GET("/my-reactions", likeHandler.GetMyReactions)

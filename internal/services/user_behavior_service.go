@@ -3,9 +3,9 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"social-media-api/internal/config"
 	"social-media-api/internal/models"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -15,66 +15,31 @@ import (
 )
 
 type UserBehaviorService struct {
-	db              *mongo.Database
-	sessions        *mongo.Collection
-	engagements     *mongo.Collection
-	journeys        *mongo.Collection
-	recommendations *mongo.Collection
-	experiments     *mongo.Collection
-	analytics       *mongo.Collection
+	sessionCollection        *mongo.Collection
+	engagementCollection     *mongo.Collection
+	journeyCollection        *mongo.Collection
+	recommendationCollection *mongo.Collection
+	experimentCollection     *mongo.Collection
+	db                       *mongo.Database
 }
 
-func NewUserBehaviorService(db *mongo.Database) *UserBehaviorService {
-	service := &UserBehaviorService{
-		db:              db,
-		sessions:        db.Collection("user_sessions"),
-		engagements:     db.Collection("content_engagements"),
-		journeys:        db.Collection("user_journeys"),
-		recommendations: db.Collection("recommendation_events"),
-		experiments:     db.Collection("experiment_events"),
-		analytics:       db.Collection("user_analytics"),
+func NewUserBehaviorService() *UserBehaviorService {
+	return &UserBehaviorService{
+		sessionCollection:        config.DB.Collection("user_sessions"),
+		engagementCollection:     config.DB.Collection("content_engagements"),
+		journeyCollection:        config.DB.Collection("user_journeys"),
+		recommendationCollection: config.DB.Collection("recommendation_events"),
+		experimentCollection:     config.DB.Collection("experiments"),
+		db:                       config.DB,
 	}
-
-	// Create indexes
-	service.createIndexes()
-	return service
 }
 
-func (s *UserBehaviorService) createIndexes() {
-	ctx := context.Background()
+// Session Management
+func (ubs *UserBehaviorService) StartSession(userID primitive.ObjectID, sessionID, deviceInfo, ipAddress, userAgent string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	// Session indexes
-	s.sessions.CreateIndex(ctx, mongo.IndexModel{
-		Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "session_id", Value: 1}},
-	})
-	s.sessions.CreateIndex(ctx, mongo.IndexModel{
-		Keys: bson.D{{Key: "start_time", Value: -1}},
-	})
-
-	// Engagement indexes
-	s.engagements.CreateIndex(ctx, mongo.IndexModel{
-		Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "view_time", Value: -1}},
-	})
-	s.engagements.CreateIndex(ctx, mongo.IndexModel{
-		Keys: bson.D{{Key: "content_id", Value: 1}, {Key: "content_type", Value: 1}},
-	})
-
-	// Journey indexes
-	s.journeys.CreateIndex(ctx, mongo.IndexModel{
-		Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "session_id", Value: 1}},
-	})
-
-	// Recommendation indexes
-	s.recommendations.CreateIndex(ctx, mongo.IndexModel{
-		Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "presented", Value: -1}},
-	})
-}
-
-// SESSION TRACKING
-
-func (s *UserBehaviorService) StartSession(userID primitive.ObjectID, sessionID, deviceInfo, ipAddress, userAgent string) error {
 	session := models.UserSession{
-		ID:           primitive.NewObjectID(),
 		UserID:       userID,
 		SessionID:    sessionID,
 		StartTime:    time.Now(),
@@ -85,657 +50,632 @@ func (s *UserBehaviorService) StartSession(userID primitive.ObjectID, sessionID,
 		Actions:      []models.UserAction{},
 	}
 
-	_, err := s.sessions.InsertOne(context.Background(), session)
+	_, err := ubs.sessionCollection.InsertOne(ctx, session)
 	return err
 }
 
-func (s *UserBehaviorService) EndSession(sessionID string) error {
-	filter := bson.M{"session_id": sessionID}
-	update := bson.M{
-		"$set": bson.M{
-			"end_time":   time.Now(),
-			"updated_at": time.Now(),
-		},
-	}
+func (ubs *UserBehaviorService) EndSession(sessionID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	// Calculate duration
+	endTime := time.Now()
+
+	// Get session to calculate duration
 	var session models.UserSession
-	err := s.sessions.FindOne(context.Background(), filter).Decode(&session)
-	if err == nil {
-		duration := time.Since(session.StartTime).Seconds()
-		update["$set"].(bson.M)["duration"] = int64(duration)
-	}
-
-	_, err = s.sessions.UpdateOne(context.Background(), filter, update)
-	return err
-}
-
-func (s *UserBehaviorService) RecordPageVisit(userID primitive.ObjectID, sessionID string, pageVisit models.PageVisit) error {
-	filter := bson.M{"user_id": userID, "session_id": sessionID}
-	update := bson.M{
-		"$push": bson.M{"pages_visited": pageVisit},
-		"$set":  bson.M{"updated_at": time.Now()},
-	}
-
-	_, err := s.sessions.UpdateOne(context.Background(), filter, update)
-
-	// Also track in journey
-	go s.trackJourneyTouchpoint(userID, sessionID, "page_visit", pageVisit.URL, map[string]interface{}{
-		"duration":  pageVisit.Duration,
-		"timestamp": pageVisit.Timestamp,
-	})
-
-	return err
-}
-
-func (s *UserBehaviorService) RecordUserAction(userID primitive.ObjectID, sessionID string, action models.UserAction) error {
-	filter := bson.M{"user_id": userID, "session_id": sessionID}
-	update := bson.M{
-		"$push": bson.M{"actions": action},
-		"$set":  bson.M{"updated_at": time.Now()},
-	}
-
-	_, err := s.sessions.UpdateOne(context.Background(), filter, update)
-
-	// Track in journey
-	go s.trackJourneyTouchpoint(userID, sessionID, action.Type, action.Target, action.Metadata)
-
-	return err
-}
-
-// CONTENT ENGAGEMENT TRACKING
-
-func (s *UserBehaviorService) RecordContentEngagement(engagement models.ContentEngagement) error {
-	engagement.ID = primitive.NewObjectID()
-	engagement.ViewTime = time.Now()
-
-	_, err := s.engagements.InsertOne(context.Background(), engagement)
-
-	// Update real-time analytics
-	go s.updateContentAnalytics(engagement)
-
-	return err
-}
-
-func (s *UserBehaviorService) RecordInteraction(userID, contentID primitive.ObjectID, contentType, interactionType, source string, metadata map[string]interface{}) error {
-	// Find existing engagement or create new one
-	filter := bson.M{
-		"user_id":    userID,
-		"content_id": contentID,
-		"view_time":  bson.M{"$gte": time.Now().Add(-time.Hour)}, // within last hour
-	}
-
-	interaction := models.Interaction{
-		Type:      interactionType,
-		Timestamp: time.Now(),
-		Value:     "",
-	}
-
-	if val, ok := metadata["value"].(string); ok {
-		interaction.Value = val
-	}
-
-	update := bson.M{
-		"$push": bson.M{"interactions": interaction},
-		"$set":  bson.M{"updated_at": time.Now()},
-	}
-
-	result := s.engagements.UpdateOne(context.Background(), filter, update)
-
-	// If no existing engagement found, create new one
-	if result.MatchedCount == 0 {
-		engagement := models.ContentEngagement{
-			ID:           primitive.NewObjectID(),
-			UserID:       userID,
-			ContentID:    contentID,
-			ContentType:  contentType,
-			ViewTime:     time.Now(),
-			Source:       source,
-			Interactions: []models.Interaction{interaction},
-			Context:      metadata,
-		}
-		_, err := s.engagements.InsertOne(context.Background(), engagement)
-		return err
-	}
-
-	return result.Err
-}
-
-// USER JOURNEY TRACKING
-
-func (s *UserBehaviorService) trackJourneyTouchpoint(userID primitive.ObjectID, sessionID, action, target string, metadata map[string]interface{}) error {
-	touchpoint := models.Touchpoint{
-		Page:      target,
-		Action:    action,
-		Timestamp: time.Now(),
-		Metadata:  metadata,
-	}
-
-	filter := bson.M{"user_id": userID, "session_id": sessionID, "completed": false}
-	update := bson.M{
-		"$push": bson.M{"touchpoints": touchpoint},
-		"$set":  bson.M{"updated_at": time.Now()},
-		"$setOnInsert": bson.M{
-			"_id":        primitive.NewObjectID(),
-			"user_id":    userID,
-			"session_id": sessionID,
-			"completed":  false,
-			"created_at": time.Now(),
-		},
-	}
-
-	_, err := s.journeys.UpdateOne(context.Background(), filter, update, options.Update().SetUpsert(true))
-	return err
-}
-
-func (s *UserBehaviorService) CompleteJourney(userID, sessionID, goal string) error {
-	filter := bson.M{"user_id": userID, "session_id": sessionID}
-
-	var journey models.UserJourney
-	err := s.journeys.FindOne(context.Background(), filter).Decode(&journey)
+	err := ubs.sessionCollection.FindOne(ctx, bson.M{"session_id": sessionID}).Decode(&session)
 	if err != nil {
 		return err
 	}
 
-	duration := time.Since(journey.Touchpoints[0].Timestamp).Seconds()
+	duration := endTime.Sub(session.StartTime).Milliseconds()
 
 	update := bson.M{
 		"$set": bson.M{
-			"goal":         goal,
-			"completed":    true,
-			"duration":     int64(duration),
-			"completed_at": time.Now(),
+			"end_time": endTime,
+			"duration": duration,
 		},
 	}
 
-	_, err = s.journeys.UpdateOne(context.Background(), filter, update)
+	_, err = ubs.sessionCollection.UpdateOne(ctx, bson.M{"session_id": sessionID}, update)
 	return err
 }
 
-// RECOMMENDATION TRACKING
+// Page Visit Tracking
+func (ubs *UserBehaviorService) RecordPageVisit(userID primitive.ObjectID, sessionID string, pageVisit models.PageVisit) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-func (s *UserBehaviorService) TrackRecommendation(userID primitive.ObjectID, recommendation models.RecommendationEvent, action string) error {
-	switch action {
-	case "presented":
-		recommendation.ID = primitive.NewObjectID()
-		recommendation.Presented = time.Now()
-		_, err := s.recommendations.InsertOne(context.Background(), recommendation)
-		return err
-
-	case "clicked":
-		filter := bson.M{
-			"user_id":   userID,
-			"item_id":   recommendation.ItemID,
-			"algorithm": recommendation.Algorithm,
-			"clicked":   nil,
-		}
-		update := bson.M{"$set": bson.M{"clicked": time.Now()}}
-		_, err := s.recommendations.UpdateOne(context.Background(), filter, update)
-		return err
-
-	case "converted":
-		filter := bson.M{
-			"user_id":   userID,
-			"item_id":   recommendation.ItemID,
-			"algorithm": recommendation.Algorithm,
-		}
-		update := bson.M{"$set": bson.M{"converted": time.Now()}}
-		_, err := s.recommendations.UpdateOne(context.Background(), filter, update)
-		return err
+	update := bson.M{
+		"$push": bson.M{
+			"pages_visited": pageVisit,
+		},
 	}
 
-	return fmt.Errorf("unknown action: %s", action)
-}
-
-// A/B TESTING
-
-func (s *UserBehaviorService) TrackExperiment(userID primitive.ObjectID, experimentID, variantID, event string, value float64) error {
-	experiment := models.ExperimentEvent{
-		ID:           primitive.NewObjectID(),
-		UserID:       userID,
-		ExperimentID: experimentID,
-		VariantID:    variantID,
-		Event:        event,
-		Value:        value,
-		Timestamp:    time.Now(),
-	}
-
-	_, err := s.experiments.InsertOne(context.Background(), experiment)
+	_, err := ubs.sessionCollection.UpdateOne(ctx,
+		bson.M{"user_id": userID, "session_id": sessionID},
+		update,
+	)
 	return err
 }
 
-// ANALYTICS AND INSIGHTS
+// User Action Tracking
+func (ubs *UserBehaviorService) RecordUserAction(userID primitive.ObjectID, sessionID string, action models.UserAction) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-func (s *UserBehaviorService) GetUserBehaviorAnalytics(userID primitive.ObjectID, timeRange string) (*models.UserBehaviorAnalytics, error) {
-	var startTime time.Time
-	switch timeRange {
-	case "day":
-		startTime = time.Now().AddDate(0, 0, -1)
-	case "week":
-		startTime = time.Now().AddDate(0, 0, -7)
-	case "month":
-		startTime = time.Now().AddDate(0, -1, 0)
-	default:
-		startTime = time.Now().AddDate(0, 0, -7)
+	update := bson.M{
+		"$push": bson.M{
+			"actions": action,
+		},
 	}
 
-	analytics := &models.UserBehaviorAnalytics{
-		UserID:    userID,
-		TimeRange: timeRange,
-		StartTime: startTime,
-		EndTime:   time.Now(),
-	}
-
-	// Session analytics
-	sessionStats, err := s.getSessionAnalytics(userID, startTime)
-	if err == nil {
-		analytics.SessionStats = *sessionStats
-	}
-
-	// Engagement analytics
-	engagementStats, err := s.getEngagementAnalytics(userID, startTime)
-	if err == nil {
-		analytics.EngagementStats = *engagementStats
-	}
-
-	// Content preferences
-	contentPrefs, err := s.getContentPreferences(userID, startTime)
-	if err == nil {
-		analytics.ContentPreferences = contentPrefs
-	}
-
-	// Activity patterns
-	activityPatterns, err := s.getActivityPatterns(userID, startTime)
-	if err == nil {
-		analytics.ActivityPatterns = activityPatterns
-	}
-
-	return analytics, nil
+	_, err := ubs.sessionCollection.UpdateOne(ctx,
+		bson.M{"user_id": userID, "session_id": sessionID},
+		update,
+	)
+	return err
 }
 
-func (s *UserBehaviorService) getSessionAnalytics(userID primitive.ObjectID, startTime time.Time) (*models.SessionStats, error) {
-	pipeline := []bson.M{
-		{"$match": bson.M{
-			"user_id":    userID,
-			"start_time": bson.M{"$gte": startTime},
-		}},
-		{"$group": bson.M{
-			"_id":            nil,
-			"total_sessions": bson.M{"$sum": 1},
-			"total_duration": bson.M{"$sum": "$duration"},
-			"avg_duration":   bson.M{"$avg": "$duration"},
-			"total_pages":    bson.M{"$sum": bson.M{"$size": "$pages_visited"}},
-			"total_actions":  bson.M{"$sum": bson.M{"$size": "$actions"}},
-		}},
-	}
+// Content Engagement Tracking
+func (ubs *UserBehaviorService) RecordContentEngagement(engagement models.ContentEngagement) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	cursor, err := s.sessions.Aggregate(context.Background(), pipeline)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(context.Background())
+	engagement.ID = primitive.NewObjectID()
 
-	var result struct {
-		TotalSessions int64   `bson:"total_sessions"`
-		TotalDuration int64   `bson:"total_duration"`
-		AvgDuration   float64 `bson:"avg_duration"`
-		TotalPages    int64   `bson:"total_pages"`
-		TotalActions  int64   `bson:"total_actions"`
-	}
-
-	if cursor.Next(context.Background()) {
-		cursor.Decode(&result)
-	}
-
-	return &models.SessionStats{
-		TotalSessions: result.TotalSessions,
-		TotalDuration: result.TotalDuration,
-		AvgDuration:   result.AvgDuration,
-		TotalPages:    result.TotalPages,
-		TotalActions:  result.TotalActions,
-	}, nil
+	_, err := ubs.engagementCollection.InsertOne(ctx, engagement)
+	return err
 }
 
-func (s *UserBehaviorService) getEngagementAnalytics(userID primitive.ObjectID, startTime time.Time) (*models.EngagementStats, error) {
-	pipeline := []bson.M{
-		{"$match": bson.M{
-			"user_id":   userID,
-			"view_time": bson.M{"$gte": startTime},
-		}},
-		{"$group": bson.M{
-			"_id":                "$content_type",
-			"total_views":        bson.M{"$sum": 1},
-			"total_duration":     bson.M{"$sum": "$view_duration"},
-			"avg_duration":       bson.M{"$avg": "$view_duration"},
-			"avg_scroll_depth":   bson.M{"$avg": "$scroll_depth"},
-			"total_interactions": bson.M{"$sum": bson.M{"$size": "$interactions"}},
-		}},
-	}
+// Post Interaction Tracking
+func (ubs *UserBehaviorService) AutoTrackPostInteraction(userID, postID primitive.ObjectID, interactionType, source string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	cursor, err := s.engagements.Aggregate(context.Background(), pipeline)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(context.Background())
-
-	stats := &models.EngagementStats{
-		ByContentType: make(map[string]models.ContentTypeStats),
-	}
-
-	for cursor.Next(context.Background()) {
-		var result struct {
-			ContentType       string  `bson:"_id"`
-			TotalViews        int64   `bson:"total_views"`
-			TotalDuration     int64   `bson:"total_duration"`
-			AvgDuration       float64 `bson:"avg_duration"`
-			AvgScrollDepth    float64 `bson:"avg_scroll_depth"`
-			TotalInteractions int64   `bson:"total_interactions"`
-		}
-		cursor.Decode(&result)
-
-		stats.ByContentType[result.ContentType] = models.ContentTypeStats{
-			TotalViews:        result.TotalViews,
-			TotalDuration:     result.TotalDuration,
-			AvgDuration:       result.AvgDuration,
-			AvgScrollDepth:    result.AvgScrollDepth,
-			TotalInteractions: result.TotalInteractions,
-		}
-	}
-
-	return stats, nil
-}
-
-func (s *UserBehaviorService) getContentPreferences(userID primitive.ObjectID, startTime time.Time) (map[string]float64, error) {
-	pipeline := []bson.M{
-		{"$match": bson.M{
-			"user_id":   userID,
-			"view_time": bson.M{"$gte": startTime},
-		}},
-		{"$unwind": "$interactions"},
-		{"$group": bson.M{
-			"_id":   "$interactions.type",
-			"count": bson.M{"$sum": 1},
-		}},
-		{"$sort": bson.M{"count": -1}},
-	}
-
-	cursor, err := s.engagements.Aggregate(context.Background(), pipeline)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(context.Background())
-
-	preferences := make(map[string]float64)
-	var total float64 = 0
-
-	// First pass: get totals
-	var results []struct {
-		Type  string `bson:"_id"`
-		Count int64  `bson:"count"`
-	}
-
-	for cursor.Next(context.Background()) {
-		var result struct {
-			Type  string `bson:"_id"`
-			Count int64  `bson:"count"`
-		}
-		cursor.Decode(&result)
-		results = append(results, result)
-		total += float64(result.Count)
-	}
-
-	// Second pass: calculate percentages
-	for _, result := range results {
-		if total > 0 {
-			preferences[result.Type] = float64(result.Count) / total * 100
-		}
-	}
-
-	return preferences, nil
-}
-
-func (s *UserBehaviorService) getActivityPatterns(userID primitive.ObjectID, startTime time.Time) (map[string]interface{}, error) {
-	pipeline := []bson.M{
-		{"$match": bson.M{
-			"user_id":    userID,
-			"start_time": bson.M{"$gte": startTime},
-		}},
-		{"$group": bson.M{
-			"_id": bson.M{
-				"hour":      bson.M{"$hour": "$start_time"},
-				"dayOfWeek": bson.M{"$dayOfWeek": "$start_time"},
+	engagement := models.ContentEngagement{
+		ID:          primitive.NewObjectID(),
+		UserID:      userID,
+		ContentID:   postID,
+		ContentType: "post",
+		ViewTime:    time.Now(),
+		Source:      source,
+		Interactions: []models.Interaction{
+			{
+				Type:      interactionType,
+				Timestamp: time.Now(),
 			},
-			"sessions": bson.M{"$sum": 1},
-			"duration": bson.M{"$sum": "$duration"},
-		}},
-		{"$sort": bson.M{"sessions": -1}},
+		},
 	}
 
-	cursor, err := s.sessions.Aggregate(context.Background(), pipeline)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(context.Background())
-
-	patterns := make(map[string]interface{})
-	hourlyActivity := make(map[int]int64)
-	dailyActivity := make(map[int]int64)
-
-	for cursor.Next(context.Background()) {
-		var result struct {
-			ID struct {
-				Hour      int `bson:"hour"`
-				DayOfWeek int `bson:"dayOfWeek"`
-			} `bson:"_id"`
-			Sessions int64 `bson:"sessions"`
-			Duration int64 `bson:"duration"`
-		}
-		cursor.Decode(&result)
-
-		hourlyActivity[result.ID.Hour] += result.Sessions
-		dailyActivity[result.ID.DayOfWeek] += result.Sessions
-	}
-
-	patterns["hourly_activity"] = hourlyActivity
-	patterns["daily_activity"] = dailyActivity
-
-	return patterns, nil
+	_, err := ubs.engagementCollection.InsertOne(ctx, engagement)
+	return err
 }
 
-// AUTOMATIC TRACKING METHODS
+// Story View Tracking
+func (ubs *UserBehaviorService) AutoTrackStoryView(userID, storyID primitive.ObjectID, source string, duration int64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-func (s *UserBehaviorService) AutoTrackPostView(userID, postID primitive.ObjectID, source string, duration int64) {
 	engagement := models.ContentEngagement{
-		UserID:       userID,
-		ContentID:    postID,
-		ContentType:  "post",
-		ViewDuration: duration,
-		Source:       source,
-		Context:      map[string]interface{}{"auto_tracked": true},
-	}
-
-	go s.RecordContentEngagement(engagement)
-}
-
-func (s *UserBehaviorService) AutoTrackPostInteraction(userID, postID primitive.ObjectID, interactionType, source string) {
-	metadata := map[string]interface{}{
-		"auto_tracked": true,
-		"timestamp":    time.Now(),
-	}
-
-	go s.RecordInteraction(userID, postID, "post", interactionType, source, metadata)
-}
-
-func (s *UserBehaviorService) AutoTrackStoryView(userID, storyID primitive.ObjectID, source string, duration int64) {
-	engagement := models.ContentEngagement{
+		ID:           primitive.NewObjectID(),
 		UserID:       userID,
 		ContentID:    storyID,
 		ContentType:  "story",
+		ViewTime:     time.Now(),
 		ViewDuration: duration,
 		Source:       source,
-		Context:      map[string]interface{}{"auto_tracked": true},
+		Interactions: []models.Interaction{
+			{
+				Type:      "view",
+				Timestamp: time.Now(),
+			},
+		},
 	}
 
-	go s.RecordContentEngagement(engagement)
+	_, err := ubs.engagementCollection.InsertOne(ctx, engagement)
+	return err
 }
 
-func (s *UserBehaviorService) AutoTrackSearch(userID primitive.ObjectID, query, resultType string, resultsCount int) {
-	metadata := map[string]interface{}{
-		"auto_tracked":  true,
-		"query":         query,
-		"result_type":   resultType,
-		"results_count": resultsCount,
-		"timestamp":     time.Now(),
-	}
-
-	sessionID := fmt.Sprintf("search_%d", time.Now().Unix())
+// Search Tracking
+func (ubs *UserBehaviorService) AutoTrackSearch(userID primitive.ObjectID, query, searchType string, resultsCount int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	action := models.UserAction{
 		Type:      "search",
 		Target:    query,
 		Timestamp: time.Now(),
-		Metadata:  metadata,
+		Metadata: map[string]interface{}{
+			"search_type":   searchType,
+			"results_count": resultsCount,
+			"auto_tracked":  true,
+		},
 	}
 
-	go s.RecordUserAction(userID, sessionID, action)
+	// Find the most recent session for this user
+	var session models.UserSession
+	err := ubs.sessionCollection.FindOne(ctx,
+		bson.M{"user_id": userID},
+		options.FindOne().SetSort(bson.M{"start_time": -1}),
+	).Decode(&session)
+
+	if err != nil {
+		// Create a new engagement record instead
+		engagement := models.ContentEngagement{
+			ID:          primitive.NewObjectID(),
+			UserID:      userID,
+			ContentType: "search",
+			ViewTime:    time.Now(),
+			Source:      "search",
+			Context: map[string]interface{}{
+				"query":         query,
+				"search_type":   searchType,
+				"results_count": resultsCount,
+			},
+		}
+		_, err = ubs.engagementCollection.InsertOne(ctx, engagement)
+		return err
+	}
+
+	return ubs.RecordUserAction(userID, session.SessionID, action)
 }
 
-// REAL-TIME ANALYTICS UPDATE
+// Generic Interaction Recording
+func (ubs *UserBehaviorService) RecordInteraction(userID, contentID primitive.ObjectID, contentType, interactionType, source string, metadata map[string]interface{}) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-func (s *UserBehaviorService) updateContentAnalytics(engagement models.ContentEngagement) {
-	// Update real-time content analytics
-	filter := bson.M{
-		"content_id":   engagement.ContentID,
-		"content_type": engagement.ContentType,
-		"date":         time.Now().Format("2006-01-02"),
-	}
-
-	update := bson.M{
-		"$inc": bson.M{
-			"total_views":    1,
-			"total_duration": engagement.ViewDuration,
-		},
-		"$setOnInsert": bson.M{
-			"_id":        primitive.NewObjectID(),
-			"created_at": time.Now(),
-		},
-		"$set": bson.M{
-			"updated_at": time.Now(),
+	engagement := models.ContentEngagement{
+		ID:          primitive.NewObjectID(),
+		UserID:      userID,
+		ContentID:   contentID,
+		ContentType: contentType,
+		ViewTime:    time.Now(),
+		Source:      source,
+		Context:     metadata,
+		Interactions: []models.Interaction{
+			{
+				Type:      interactionType,
+				Timestamp: time.Now(),
+			},
 		},
 	}
 
-	s.analytics.UpdateOne(context.Background(), filter, update, options.Update().SetUpsert(true))
+	_, err := ubs.engagementCollection.InsertOne(ctx, engagement)
+	return err
 }
 
-// UTILITY METHODS
+// Recommendation Tracking
+func (ubs *UserBehaviorService) TrackRecommendation(userID primitive.ObjectID, event models.RecommendationEvent, action string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-func (s *UserBehaviorService) GetRecommendationPerformance(algorithm string, timeRange string) (*models.RecommendationPerformance, error) {
-	var startTime time.Time
+	event.ID = primitive.NewObjectID()
+
+	switch action {
+	case "clicked":
+		now := time.Now()
+		event.Clicked = &now
+	case "converted":
+		now := time.Now()
+		event.Converted = &now
+	}
+
+	_, err := ubs.recommendationCollection.InsertOne(ctx, event)
+	return err
+}
+
+// Experiment Tracking
+func (ubs *UserBehaviorService) TrackExperiment(userID primitive.ObjectID, experimentID, variantID, event string, value float64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	experiment := bson.M{
+		"_id":           primitive.NewObjectID(),
+		"user_id":       userID,
+		"experiment_id": experimentID,
+		"variant_id":    variantID,
+		"event":         event,
+		"value":         value,
+		"timestamp":     time.Now(),
+	}
+
+	_, err := ubs.experimentCollection.InsertOne(ctx, experiment)
+	return err
+}
+
+// Analytics and Insights
+func (ubs *UserBehaviorService) GetUserBehaviorAnalytics(userID primitive.ObjectID, timeRange string) (map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// Calculate time filter
+	var since time.Time
 	switch timeRange {
 	case "day":
-		startTime = time.Now().AddDate(0, 0, -1)
+		since = time.Now().Add(-24 * time.Hour)
 	case "week":
-		startTime = time.Now().AddDate(0, 0, -7)
+		since = time.Now().Add(-7 * 24 * time.Hour)
 	case "month":
-		startTime = time.Now().AddDate(0, -1, 0)
+		since = time.Now().Add(-30 * 24 * time.Hour)
 	default:
-		startTime = time.Now().AddDate(0, 0, -7)
+		since = time.Now().Add(-7 * 24 * time.Hour)
 	}
 
+	analytics := make(map[string]interface{})
+
+	// Get session stats
+	sessionStats, err := ubs.getSessionStats(ctx, userID, since)
+	if err == nil {
+		analytics["sessions"] = sessionStats
+	}
+
+	// Get engagement stats
+	engagementStats, err := ubs.getEngagementStats(ctx, userID, since)
+	if err == nil {
+		analytics["engagement"] = engagementStats
+	}
+
+	// Get content preferences
+	contentPrefs, err := ubs.getContentPreferences(ctx, userID, since)
+	if err == nil {
+		analytics["content_preferences"] = contentPrefs
+	}
+
+	// Get interaction patterns
+	interactionPatterns, err := ubs.getInteractionPatterns(ctx, userID, since)
+	if err == nil {
+		analytics["interaction_patterns"] = interactionPatterns
+	}
+
+	return analytics, nil
+}
+
+// Helper methods for analytics
+func (ubs *UserBehaviorService) getSessionStats(ctx context.Context, userID primitive.ObjectID, since time.Time) (map[string]interface{}, error) {
 	pipeline := []bson.M{
-		{"$match": bson.M{
-			"algorithm": algorithm,
-			"presented": bson.M{"$gte": startTime},
-		}},
-		{"$group": bson.M{
-			"_id":             nil,
-			"total_presented": bson.M{"$sum": 1},
-			"total_clicked": bson.M{"$sum": bson.M{
-				"$cond": bson.A{bson.M{"$ne": bson.A{"$clicked", nil}}, 1, 0},
-			}},
-			"total_converted": bson.M{"$sum": bson.M{
-				"$cond": bson.A{bson.M{"$ne": bson.A{"$converted", nil}}, 1, 0},
-			}},
-		}},
+		{
+			"$match": bson.M{
+				"user_id":    userID,
+				"start_time": bson.M{"$gte": since},
+			},
+		},
+		{
+			"$group": bson.M{
+				"_id":              nil,
+				"total_sessions":   bson.M{"$sum": 1},
+				"avg_duration":     bson.M{"$avg": "$duration"},
+				"total_page_views": bson.M{"$sum": bson.M{"$size": "$pages_visited"}},
+				"total_actions":    bson.M{"$sum": bson.M{"$size": "$actions"}},
+			},
+		},
 	}
 
-	cursor, err := s.recommendations.Aggregate(context.Background(), pipeline)
+	cursor, err := ubs.sessionCollection.Aggregate(ctx, pipeline)
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(context.Background())
+	defer cursor.Close(ctx)
 
-	var result struct {
-		TotalPresented int64 `bson:"total_presented"`
-		TotalClicked   int64 `bson:"total_clicked"`
-		TotalConverted int64 `bson:"total_converted"`
+	var results []map[string]interface{}
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, err
 	}
 
-	if cursor.Next(context.Background()) {
-		cursor.Decode(&result)
+	if len(results) == 0 {
+		return map[string]interface{}{
+			"total_sessions":   0,
+			"avg_duration":     0,
+			"total_page_views": 0,
+			"total_actions":    0,
+		}, nil
 	}
 
-	performance := &models.RecommendationPerformance{
-		Algorithm:      algorithm,
-		TimeRange:      timeRange,
-		TotalPresented: result.TotalPresented,
-		TotalClicked:   result.TotalClicked,
-		TotalConverted: result.TotalConverted,
-	}
-
-	if result.TotalPresented > 0 {
-		performance.CTR = float64(result.TotalClicked) / float64(result.TotalPresented) * 100
-		performance.ConversionRate = float64(result.TotalConverted) / float64(result.TotalPresented) * 100
-	}
-
-	return performance, nil
+	return results[0], nil
 }
 
-func (s *UserBehaviorService) GetContentPopularity(contentType string, timeRange string, limit int) ([]models.ContentPopularity, error) {
-	var startTime time.Time
-	switch timeRange {
-	case "day":
-		startTime = time.Now().AddDate(0, 0, -1)
-	case "week":
-		startTime = time.Now().AddDate(0, 0, -7)
-	case "month":
-		startTime = time.Now().AddDate(0, -1, 0)
-	default:
-		startTime = time.Now().AddDate(0, 0, -7)
-	}
-
+func (ubs *UserBehaviorService) getEngagementStats(ctx context.Context, userID primitive.ObjectID, since time.Time) (map[string]interface{}, error) {
 	pipeline := []bson.M{
-		{"$match": bson.M{
-			"content_type": contentType,
-			"view_time":    bson.M{"$gte": startTime},
-		}},
-		{"$group": bson.M{
-			"_id":                "$content_id",
-			"total_views":        bson.M{"$sum": 1},
-			"unique_viewers":     bson.M{"$addToSet": "$user_id"},
-			"total_duration":     bson.M{"$sum": "$view_duration"},
-			"avg_duration":       bson.M{"$avg": "$view_duration"},
-			"total_interactions": bson.M{"$sum": bson.M{"$size": "$interactions"}},
-		}},
-		{"$addFields": bson.M{
-			"unique_viewers_count": bson.M{"$size": "$unique_viewers"},
-		}},
-		{"$sort": bson.M{"total_views": -1}},
-		{"$limit": limit},
+		{
+			"$match": bson.M{
+				"user_id":   userID,
+				"view_time": bson.M{"$gte": since},
+			},
+		},
+		{
+			"$group": bson.M{
+				"_id":                "$content_type",
+				"total_views":        bson.M{"$sum": 1},
+				"avg_view_duration":  bson.M{"$avg": "$view_duration"},
+				"total_interactions": bson.M{"$sum": bson.M{"$size": "$interactions"}},
+			},
+		},
 	}
 
-	cursor, err := s.engagements.Aggregate(context.Background(), pipeline)
+	cursor, err := ubs.engagementCollection.Aggregate(ctx, pipeline)
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(context.Background())
+	defer cursor.Close(ctx)
 
-	var results []models.ContentPopularity
-	for cursor.Next(context.Background()) {
-		var result models.ContentPopularity
-		cursor.Decode(&result)
-		results = append(results, result)
+	var results []map[string]interface{}
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, err
 	}
 
-	return results, nil
+	return map[string]interface{}{
+		"by_content_type": results,
+	}, nil
+}
+
+func (ubs *UserBehaviorService) getContentPreferences(ctx context.Context, userID primitive.ObjectID, since time.Time) (map[string]interface{}, error) {
+	pipeline := []bson.M{
+		{
+			"$match": bson.M{
+				"user_id":   userID,
+				"view_time": bson.M{"$gte": since},
+			},
+		},
+		{
+			"$group": bson.M{
+				"_id":              "$source",
+				"engagement_count": bson.M{"$sum": 1},
+				"avg_duration":     bson.M{"$avg": "$view_duration"},
+			},
+		},
+		{
+			"$sort": bson.M{"engagement_count": -1},
+		},
+		{
+			"$limit": 10,
+		},
+	}
+
+	cursor, err := ubs.engagementCollection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var results []map[string]interface{}
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"preferred_sources": results,
+	}, nil
+}
+
+func (ubs *UserBehaviorService) getInteractionPatterns(ctx context.Context, userID primitive.ObjectID, since time.Time) (map[string]interface{}, error) {
+	pipeline := []bson.M{
+		{
+			"$match": bson.M{
+				"user_id":   userID,
+				"view_time": bson.M{"$gte": since},
+			},
+		},
+		{
+			"$unwind": "$interactions",
+		},
+		{
+			"$group": bson.M{
+				"_id":   "$interactions.type",
+				"count": bson.M{"$sum": 1},
+			},
+		},
+		{
+			"$sort": bson.M{"count": -1},
+		},
+	}
+
+	cursor, err := ubs.engagementCollection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var results []map[string]interface{}
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"interaction_types": results,
+	}, nil
+}
+
+// Get User Interest Score for Content
+func (ubs *UserBehaviorService) GetUserInterestScore(userID, contentID primitive.ObjectID) (float64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pipeline := []bson.M{
+		{
+			"$match": bson.M{
+				"user_id":    userID,
+				"content_id": contentID,
+			},
+		},
+		{
+			"$group": bson.M{
+				"_id":                 nil,
+				"total_view_duration": bson.M{"$sum": "$view_duration"},
+				"interaction_count":   bson.M{"$sum": bson.M{"$size": "$interactions"}},
+				"view_count":          bson.M{"$sum": 1},
+			},
+		},
+	}
+
+	cursor, err := ubs.engagementCollection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return 0, err
+	}
+	defer cursor.Close(ctx)
+
+	var results []map[string]interface{}
+	if err := cursor.All(ctx, &results); err != nil {
+		return 0, err
+	}
+
+	if len(results) == 0 {
+		return 0, nil
+	}
+
+	result := results[0]
+
+	// Calculate interest score based on engagement metrics
+	viewDuration := getFloat64(result["total_view_duration"])
+	interactionCount := getFloat64(result["interaction_count"])
+	viewCount := getFloat64(result["view_count"])
+
+	// Simple scoring algorithm (can be made more sophisticated)
+	score := (viewDuration/1000)*0.3 + interactionCount*0.5 + viewCount*0.2
+
+	return score, nil
+}
+
+// Helper function to safely convert interface{} to float64
+func getFloat64(value interface{}) float64 {
+	switch v := value.(type) {
+	case float64:
+		return v
+	case int:
+		return float64(v)
+	case int32:
+		return float64(v)
+	case int64:
+		return float64(v)
+	default:
+		return 0
+	}
+}
+
+// Get User Content Preferences
+func (ubs *UserBehaviorService) GetUserContentPreferences(userID primitive.ObjectID) (map[string]float64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Get user's engagement patterns from last 30 days
+	since := time.Now().Add(-30 * 24 * time.Hour)
+
+	pipeline := []bson.M{
+		{
+			"$match": bson.M{
+				"user_id":   userID,
+				"view_time": bson.M{"$gte": since},
+			},
+		},
+		{
+			"$group": bson.M{
+				"_id":               "$content_type",
+				"total_engagement":  bson.M{"$sum": bson.M{"$size": "$interactions"}},
+				"avg_view_duration": bson.M{"$avg": "$view_duration"},
+				"view_count":        bson.M{"$sum": 1},
+			},
+		},
+	}
+
+	cursor, err := ubs.engagementCollection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var results []map[string]interface{}
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+
+	preferences := make(map[string]float64)
+
+	for _, result := range results {
+		contentType := result["_id"].(string)
+		engagement := getFloat64(result["total_engagement"])
+		avgDuration := getFloat64(result["avg_view_duration"])
+		viewCount := getFloat64(result["view_count"])
+
+		// Calculate preference score
+		score := engagement*0.4 + (avgDuration/1000)*0.3 + viewCount*0.3
+		preferences[contentType] = score
+	}
+
+	return preferences, nil
+}
+
+// Get Similar Users based on behavior
+func (ubs *UserBehaviorService) GetSimilarUsers(userID primitive.ObjectID, limit int) ([]primitive.ObjectID, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// Get user's interests
+	userPrefs, err := ubs.GetUserContentPreferences(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find users with similar preferences (simplified approach)
+	// In a real implementation, you'd use more sophisticated similarity algorithms
+	since := time.Now().Add(-30 * 24 * time.Hour)
+
+	pipeline := []bson.M{
+		{
+			"$match": bson.M{
+				"user_id":   bson.M{"$ne": userID},
+				"view_time": bson.M{"$gte": since},
+			},
+		},
+		{
+			"$group": bson.M{
+				"_id":               "$user_id",
+				"content_types":     bson.M{"$addToSet": "$content_type"},
+				"interaction_count": bson.M{"$sum": bson.M{"$size": "$interactions"}},
+			},
+		},
+		{
+			"$match": bson.M{
+				"interaction_count": bson.M{"$gte": 5}, // Minimum activity threshold
+			},
+		},
+		{
+			"$limit": limit * 2, // Get more candidates to filter
+		},
+	}
+
+	cursor, err := ubs.engagementCollection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var candidates []map[string]interface{}
+	if err := cursor.All(ctx, &candidates); err != nil {
+		return nil, err
+	}
+
+	// Simple similarity scoring based on common content types
+	var similarUsers []primitive.ObjectID
+
+	for _, candidate := range candidates {
+		candidateID := candidate["_id"].(primitive.ObjectID)
+		contentTypes := candidate["content_types"].(primitive.A)
+
+		// Check for common interests
+		commonInterests := 0
+		for _, ct := range contentTypes {
+			if _, exists := userPrefs[ct.(string)]; exists {
+				commonInterests++
+			}
+		}
+
+		// If they have at least 2 common content types, consider them similar
+		if commonInterests >= 2 {
+			similarUsers = append(similarUsers, candidateID)
+			if len(similarUsers) >= limit {
+				break
+			}
+		}
+	}
+
+	return similarUsers, nil
 }

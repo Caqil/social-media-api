@@ -525,3 +525,49 @@ func (m *BehaviorTrackingMiddleware) SessionCleanup() gin.HandlerFunc {
 		c.Next()
 	})
 }
+
+// BehaviorBasedCaching provides behavior-based cache strategies
+func (m *BehaviorTrackingMiddleware) BehaviorBasedCaching() gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.Next()
+			return
+		}
+
+		// Get user behavior patterns for cache optimization
+		// This is a simplified implementation
+		path := c.Request.URL.Path
+
+		// Set cache headers based on user behavior
+		if strings.Contains(path, "/feed") {
+			// Feed content - short cache for active users
+			c.Header("Cache-Control", "private, max-age=300") // 5 minutes
+		} else if strings.Contains(path, "/posts") && c.Request.Method == "GET" {
+			// Post content - longer cache
+			c.Header("Cache-Control", "private, max-age=1800") // 30 minutes
+		}
+
+		// Track cache performance
+		go func() {
+			metadata := map[string]interface{}{
+				"cache_strategy": "behavior_based",
+				"path":           path,
+				"user_id":        userID.(primitive.ObjectID).Hex(),
+			}
+
+			sessionID, _ := c.Get("session_id")
+			if sessionID != nil {
+				action := models.UserAction{
+					Type:      "cache_access",
+					Target:    path,
+					Timestamp: time.Now(),
+					Metadata:  metadata,
+				}
+				m.behaviorService.RecordUserAction(userID.(primitive.ObjectID), sessionID.(string), action)
+			}
+		}()
+
+		c.Next()
+	})
+}

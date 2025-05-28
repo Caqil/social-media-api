@@ -61,7 +61,7 @@ func (am *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 
 		claims, err := am.validateToken(token, am.jwtSecret)
 		if err != nil {
-			utils.ErrorResponse(c, http.StatusUnauthorized, "Invalid or expired token", err.Error())
+			utils.ErrorResponse(c, http.StatusUnauthorized, "Invalid or expired token", nil)
 			c.Abort()
 			return
 		}
@@ -247,7 +247,7 @@ func (am *AuthMiddleware) RefreshToken() gin.HandlerFunc {
 
 		claims, err := am.validateToken(refreshToken, am.refreshSecret)
 		if err != nil {
-			utils.ErrorResponse(c, http.StatusUnauthorized, "Invalid or expired refresh token", err.Error())
+			utils.ErrorResponse(c, http.StatusUnauthorized, "Invalid or expired refresh token", nil)
 			c.Abort()
 			return
 		}
@@ -314,7 +314,7 @@ func (am *AuthMiddleware) RateLimitByUser(maxRequests int, window time.Duration)
 		}
 
 		userObjID := userID.(primitive.ObjectID)
-		key := fmt.Sprintf("rate_limit_user_%s", userObjID.Hex())
+		fmt.Sprintf("rate_limit_user_%s", userObjID.Hex())
 
 		// Implement rate limiting logic here (Redis recommended)
 		// For now, continue without blocking

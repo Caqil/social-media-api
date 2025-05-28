@@ -283,26 +283,22 @@ func CreateReactionStats(reactions map[ReactionType]ReactionCount) ReactionStats
 }
 
 
-// GetTopReactions returns the top N reaction types by count
-func GetTopReactions(reactions map[ReactionType]int64, limit int) []struct {
+// ReactionInfo represents reaction information with count and metadata
+type ReactionInfo struct {
 	Type  ReactionType `json:"type"`
 	Count int64        `json:"count"`
 	Emoji string       `json:"emoji"`
 	Name  string       `json:"name"`
-} {
-	type reactionInfo struct {
-		Type  ReactionType `json:"type"`
-		Count int64        `json:"count"`
-		Emoji string       `json:"emoji"`
-		Name  string       `json:"name"`
-	}
+}
 
-	var sortedReactions []reactionInfo
+// GetTopReactions returns the top N reaction types by count
+func GetTopReactions(reactions map[ReactionType]int64, limit int) []ReactionInfo {
+	var sortedReactions []ReactionInfo
 
 	// Convert map to slice for sorting
 	for reactionType, count := range reactions {
 		if count > 0 {
-			sortedReactions = append(sortedReactions, reactionInfo{
+			sortedReactions = append(sortedReactions, ReactionInfo{
 				Type:  reactionType,
 				Count: count,
 				Emoji: GetReactionEmoji(reactionType),
@@ -326,7 +322,6 @@ func GetTopReactions(reactions map[ReactionType]int64, limit int) []struct {
 	}
 	return sortedReactions
 }
-
 // FormatReactionText formats reaction text for display (e.g., "You and 5 others reacted")
 func FormatReactionText(totalCount int64, userReaction ReactionType, currentUserID string) string {
 	if totalCount == 0 {

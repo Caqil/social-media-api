@@ -4,6 +4,7 @@ package utils
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -38,12 +39,12 @@ type ValidationError struct {
 
 // PaginatedResponse represents paginated data response
 type PaginatedResponse struct {
-	Success    bool               `json:"success"`
-	Message    string             `json:"message"`
-	Data       interface{}        `json:"data"`
-	Pagination PaginationMeta     `json:"pagination"`
-	Links      *PaginationLinks   `json:"links,omitempty"`
-	Timestamp  int64              `json:"timestamp"`
+	Success    bool             `json:"success"`
+	Message    string           `json:"message"`
+	Data       interface{}      `json:"data"`
+	Pagination PaginationMeta   `json:"pagination"`
+	Links      *PaginationLinks `json:"links,omitempty"`
+	Timestamp  int64            `json:"timestamp"`
 }
 
 // SuccessResponse sends a success response
@@ -72,7 +73,7 @@ func SuccessResponseWithMeta(c *gin.Context, statusCode int, message string, dat
 // ErrorResponse sends an error response
 func ErrorResponse(c *gin.Context, statusCode int, message string, err error) {
 	var errorInfo *ErrorInfo
-	
+
 	if err != nil {
 		errorInfo = &ErrorInfo{
 			Message: err.Error(),
@@ -91,7 +92,7 @@ func ErrorResponse(c *gin.Context, statusCode int, message string, err error) {
 // ErrorResponseWithCode sends an error response with error code
 func ErrorResponseWithCode(c *gin.Context, statusCode int, message string, errorCode string, err error) {
 	var errorInfo *ErrorInfo
-	
+
 	if err != nil {
 		errorInfo = &ErrorInfo{
 			Code:    errorCode,
@@ -162,7 +163,7 @@ func ValidationErrorResponse(c *gin.Context, err error) {
 		Error:     errorInfo,
 		Timestamp: getCurrentTimestamp(),
 	}
-	
+
 	c.JSON(http.StatusBadRequest, response)
 }
 
@@ -290,7 +291,7 @@ func getCurrentTimestamp() int64 {
 // getJSONFieldName extracts JSON field name from validation error
 func getJSONFieldName(fe validator.FieldError) string {
 	field := fe.Field()
-	
+
 	// Convert struct field name to JSON field name (snake_case)
 	var result strings.Builder
 	for i, r := range field {
@@ -299,14 +300,14 @@ func getJSONFieldName(fe validator.FieldError) string {
 		}
 		result.WriteRune(r)
 	}
-	
+
 	return strings.ToLower(result.String())
 }
 
 // getValidationErrorMessage returns user-friendly validation error message
 func getValidationErrorMessage(fe validator.FieldError) string {
 	field := getJSONFieldName(fe)
-	
+
 	switch fe.Tag() {
 	case "required":
 		return field + " is required"
@@ -422,13 +423,11 @@ func HealthCheckResponse(c *gin.Context, status string) {
 }
 
 // getCurrentTime returns current time (can be mocked for testing)
-var getCurrentTime = func() interface{} {
-	return struct{ Unix() int64 }{
-		Unix: func() int64 { return 1640995200 }, // Mock timestamp
-	}
+var getCurrentTime = func() time.Time {
+	return time.Unix(1640995200, 0) // Mock timestamp for testing
 }
 
 // SetTimeProvider sets a custom time provider (useful for testing)
-func SetTimeProvider(provider func() interface{}) {
+func SetTimeProvider(provider func() time.Time) {
 	getCurrentTime = provider
 }

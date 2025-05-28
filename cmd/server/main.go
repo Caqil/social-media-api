@@ -2,7 +2,7 @@ package main
 
 import (
 	"log"
-	"social-media-api/config"
+	"social-media-api/internal/config"
 	"social-media-api/routes"
 
 	"github.com/gin-gonic/gin"

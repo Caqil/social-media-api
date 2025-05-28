@@ -67,8 +67,8 @@ func GetValidator() *validator.Validate {
 
 // ValidateStruct validates a struct and returns formatted errors
 func ValidateStruct(s interface{}) []ValidationError {
-	validator := GetValidator()
-	err := validator.Struct(s)
+	validate := GetValidator()
+	err := validate.Struct(s)
 
 	if err == nil {
 		return nil
@@ -76,14 +76,25 @@ func ValidateStruct(s interface{}) []ValidationError {
 
 	var validationErrors []ValidationError
 
-	for _, err := range err.(validator.ValidationErrors) {
-		validationError := ValidationError{
-			Field:   err.Field(),
-			Tag:     err.Tag(),
-			Value:   fmt.Sprintf("%v", err.Value()),
-			Message: getValidationMessage(err),
+	// Type assert to validator.ValidationErrors with proper error handling
+	if ve, ok := err.(validator.ValidationErrors); ok {
+		for _, fieldError := range ve {
+			validationError := ValidationError{
+				Field:   fieldError.Field(),
+				Tag:     fieldError.Tag(),
+				Value:   fmt.Sprintf("%v", fieldError.Value()),
+				Message: getValidationMessage(fieldError),
+			}
+			validationErrors = append(validationErrors, validationError)
 		}
-		validationErrors = append(validationErrors, validationError)
+	} else {
+		// Handle non-validation errors (like JSON parsing errors)
+		validationErrors = append(validationErrors, ValidationError{
+			Field:   "general",
+			Tag:     "error",
+			Value:   "",
+			Message: err.Error(),
+		})
 	}
 
 	return validationErrors

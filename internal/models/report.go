@@ -159,7 +159,55 @@ type ReportSummaryResponse struct {
 	Percentage    float64      `json:"percentage"`
 }
 
-// Methods for Report model
+// ReportFilter represents filtering options for reports
+type ReportFilter struct {
+	Status           string       `json:"status,omitempty"`
+	TargetType       string       `json:"target_type,omitempty"`
+	Reason           ReportReason `json:"reason,omitempty"`
+	Priority         string       `json:"priority,omitempty"`
+	ReporterID       string       `json:"reporter_id,omitempty"`
+	AssignedTo       string       `json:"assigned_to,omitempty"`
+	AutoDetected     *bool        `json:"auto_detected,omitempty"`
+	RequiresFollowUp *bool        `json:"requires_follow_up,omitempty"`
+	CreatedAfter     time.Time    `json:"created_after,omitempty"`
+	CreatedBefore    time.Time    `json:"created_before,omitempty"`
+	SortBy           string       `json:"sort_by,omitempty"`
+}
+
+// ReportSearchRequest represents report search parameters
+type ReportSearchRequest struct {
+	Query      string       `json:"query" validate:"required,min=1"`
+	Status     string       `json:"status,omitempty"`
+	TargetType string       `json:"target_type,omitempty"`
+	Reason     ReportReason `json:"reason,omitempty"`
+	Priority   string       `json:"priority,omitempty"`
+	AssignedTo string       `json:"assigned_to,omitempty"`
+	Page       int          `json:"page,omitempty" validate:"min=1"`
+	Limit      int          `json:"limit,omitempty" validate:"min=1,max=50"`
+}
+
+// BulkReportUpdateRequest represents bulk update request for reports
+type BulkReportUpdateRequest struct {
+	ReportIDs []string            `json:"report_ids" validate:"required,min=1,max=50"`
+	Action    string              `json:"action" validate:"required,oneof=assign resolve reject update_priority update_status"`
+	Data      UpdateReportRequest `json:"data"`
+}
+
+// ReportAssignRequest represents request to assign a report
+type ReportAssignRequest struct {
+	AssignedTo string `json:"assigned_to" validate:"required"`
+}
+
+// ReportResolveRequest represents request to resolve a report
+type ReportResolveRequest struct {
+	Resolution string `json:"resolution" validate:"required,max=500"`
+	Note       string `json:"note,omitempty" validate:"max=2000"`
+}
+
+// ReportRejectRequest represents request to reject a report
+type ReportRejectRequest struct {
+	Note string `json:"note" validate:"required,max=2000"`
+}
 
 // BeforeCreate sets default values before creating report
 func (r *Report) BeforeCreate() {

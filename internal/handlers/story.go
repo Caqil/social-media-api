@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"net/http"
 	"strings"
 
 	"social-media-api/internal/models"
@@ -45,7 +46,7 @@ func (h *StoryHandler) CreateStory(c *gin.Context) {
 	}
 
 	// Validate content
-	if len(req.Media) == 0 && strings.TrimSpace(req.Content) == "" {
+	if len(req.Media.URL) == 0 && strings.TrimSpace(req.Content) == "" {
 		utils.BadRequestResponse(c, "Story must have content or media", nil)
 		return
 	}
@@ -77,7 +78,7 @@ func (h *StoryHandler) GetStory(c *gin.Context) {
 
 	story, err := h.storyService.GetStoryByID(storyID, currentUserID)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "access denied") {
+		if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "access denied") || strings.Contains(err.Error(), "expired") {
 			utils.NotFoundResponse(c, "Story not found or access denied")
 			return
 		}
@@ -169,7 +170,7 @@ func (h *StoryHandler) GetFollowingStories(c *gin.Context) {
 	})
 }
 
-// UpdateStory updates an existing story
+// UpdateStory updates an existing story (limited fields)
 func (h *StoryHandler) UpdateStory(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
@@ -184,7 +185,8 @@ func (h *StoryHandler) UpdateStory(c *gin.Context) {
 		return
 	}
 
-	var req models.UpdateStoryRequest
+	// Accept a generic map for story updates (limited fields)
+	var req map[string]interface{}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.BadRequestResponse(c, "Invalid request format", err)
 		return
@@ -293,9 +295,7 @@ func (h *StoryHandler) GetStoryViews(c *gin.Context) {
 	totalCount := int64(len(views))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
 
-	utils.PaginatedSuccessResponse(c, "Story views retrieved successfully", views, paginationMeta, gin.H{
-		"story_id": storyIDStr,
-	})
+	utils.PaginatedSuccessResponse(c, "Story views retrieved successfully", views, paginationMeta, nil)
 }
 
 // ReactToStory adds a reaction to a story
@@ -326,6 +326,10 @@ func (h *StoryHandler) ReactToStory(c *gin.Context) {
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			utils.NotFoundResponse(c, "Story not found")
+			return
+		}
+		if strings.Contains(err.Error(), "not allowed") {
+			utils.BadRequestResponse(c, err.Error(), nil)
 			return
 		}
 		utils.InternalServerErrorResponse(c, "Failed to react to story", err)
@@ -400,90 +404,7 @@ func (h *StoryHandler) GetStoryReactions(c *gin.Context) {
 	totalCount := int64(len(reactions))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
 
-	utils.PaginatedSuccessResponse(c, "Story reactions retrieved successfully", reactions, paginationMeta, gin.H{
-		"story_id": storyIDStr,
-	})
-}
-
-// ReplyToStory creates a reply to a story
-func (h *StoryHandler) ReplyToStory(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		utils.UnauthorizedResponse(c, "User not authenticated")
-		return
-	}
-
-	storyIDStr := c.Param("id")
-	storyID, err := primitive.ObjectIDFromHex(storyIDStr)
-	if err != nil {
-		utils.BadRequestResponse(c, "Invalid story ID format", err)
-		return
-	}
-
-	var req models.CreateStoryReplyRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.BadRequestResponse(c, "Invalid request format", err)
-		return
-	}
-
-	if err := h.validator.Struct(req); err != nil {
-		utils.ValidationErrorResponse(c, err)
-		return
-	}
-
-	reply, err := h.storyService.ReplyToStory(storyID, userID.(primitive.ObjectID), req)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			utils.NotFoundResponse(c, "Story not found")
-			return
-		}
-		utils.InternalServerErrorResponse(c, "Failed to reply to story", err)
-		return
-	}
-
-	utils.CreatedResponse(c, "Story reply created successfully", reply.ToStoryReplyResponse())
-}
-
-// GetStoryReplies retrieves replies to a story
-func (h *StoryHandler) GetStoryReplies(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		utils.UnauthorizedResponse(c, "User not authenticated")
-		return
-	}
-
-	storyIDStr := c.Param("id")
-	storyID, err := primitive.ObjectIDFromHex(storyIDStr)
-	if err != nil {
-		utils.BadRequestResponse(c, "Invalid story ID format", err)
-		return
-	}
-
-	// Get pagination parameters
-	params := utils.GetPaginationParams(c)
-
-	replies, err := h.storyService.GetStoryReplies(storyID, userID.(primitive.ObjectID), params.Limit, params.Offset)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "access denied") {
-			utils.NotFoundResponse(c, "Story not found or access denied")
-			return
-		}
-		utils.InternalServerErrorResponse(c, "Failed to get story replies", err)
-		return
-	}
-
-	// Convert to response format
-	var replyResponses []models.StoryReplyResponse
-	for _, reply := range replies {
-		replyResponses = append(replyResponses, reply.ToStoryReplyResponse())
-	}
-
-	totalCount := int64(len(replyResponses))
-	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
-
-	utils.PaginatedSuccessResponse(c, "Story replies retrieved successfully", replyResponses, paginationMeta, gin.H{
-		"story_id": storyIDStr,
-	})
+	utils.PaginatedSuccessResponse(c, "Story reactions retrieved successfully", reactions, paginationMeta, nil)
 }
 
 // GetStoryStats retrieves story statistics
@@ -623,3 +544,108 @@ func (h *StoryHandler) GetArchivedStories(c *gin.Context) {
 
 	utils.PaginatedSuccessResponse(c, "Archived stories retrieved successfully", storyResponses, paginationMeta, nil)
 }
+
+// Story Highlights handlers
+
+// CreateStoryHighlight creates a new story highlight
+func (h *StoryHandler) CreateStoryHighlight(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	var req models.CreateStoryHighlightRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequestResponse(c, "Invalid request format", err)
+		return
+	}
+
+	if err := h.validator.Struct(req); err != nil {
+		utils.ValidationErrorResponse(c, err)
+		return
+	}
+
+	highlight, err := h.storyService.CreateStoryHighlight(userID.(primitive.ObjectID), req)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "access denied") {
+			utils.BadRequestResponse(c, err.Error(), nil)
+			return
+		}
+		utils.InternalServerErrorResponse(c, "Failed to create story highlight", err)
+		return
+	}
+
+	utils.CreatedResponse(c, "Story highlight created successfully", highlight.ToStoryHighlightResponse())
+}
+
+// GetUserStoryHighlights retrieves story highlights for a user
+func (h *StoryHandler) GetUserStoryHighlights(c *gin.Context) {
+	userIDStr := c.Param("userId")
+	userID, err := primitive.ObjectIDFromHex(userIDStr)
+	if err != nil {
+		utils.BadRequestResponse(c, "Invalid user ID format", err)
+		return
+	}
+
+	highlights, err := h.storyService.GetUserStoryHighlights(userID)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to get story highlights", err)
+		return
+	}
+
+	utils.OkResponse(c, "Story highlights retrieved successfully", gin.H{
+		"user_id":    userIDStr,
+		"highlights": highlights,
+		"count":      len(highlights),
+	})
+}
+
+// UpdateStoryHighlight updates an existing story highlight
+func (h *StoryHandler) UpdateStoryHighlight(c *gin.Context) {
+	_, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	highlightIDStr := c.Param("id")
+	_, err := primitive.ObjectIDFromHex(highlightIDStr)
+	if err != nil {
+		utils.BadRequestResponse(c, "Invalid highlight ID format", err)
+		return
+	}
+
+	var req models.UpdateStoryHighlightRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequestResponse(c, "Invalid request format", err)
+		return
+	}
+
+	// This would need to be implemented in the service
+	utils.ErrorResponse(c, http.StatusNotImplemented, "Update story highlight not implemented", nil)
+}
+
+// DeleteStoryHighlight deletes a story highlight
+func (h *StoryHandler) DeleteStoryHighlight(c *gin.Context) {
+	_, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	highlightIDStr := c.Param("id")
+	highlightID, err := primitive.ObjectIDFromHex(highlightIDStr)
+	if err != nil {
+		utils.BadRequestResponse(c, "Invalid highlight ID format", err)
+		return
+	}
+
+	// This would need to be implemented in the service
+	_ = highlightID // Use the variable to avoid unused error
+	utils.ErrorResponse(c, http.StatusNotImplemented, "Delete story highlight not implemented", nil)
+}
+
+// Helper methods removed since they were causing confusion with story replies
+// The story model doesn't include reply functionality directly - that would
+// typically be handled through comments or a separate messaging system

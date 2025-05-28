@@ -10,24 +10,24 @@ import (
 
 // SetupFollowRoutes sets up follow/social relationship routes
 func SetupFollowRoutes(router *gin.Engine, followHandler *handlers.FollowHandler, authMiddleware *middleware.AuthMiddleware) {
-	// Public follow routes (viewing relationships)
+	// Public follow routes (viewing relationships) - FIXED: Changed :userId to :id
 	follows := router.Group("/api/v1")
 	{
 		// User relationship viewing
-		follows.GET("/users/:userId/followers", authMiddleware.OptionalAuth(), followHandler.GetFollowers)
-		follows.GET("/users/:userId/following", authMiddleware.OptionalAuth(), followHandler.GetFollowing)
-		follows.GET("/users/:userId/stats", authMiddleware.OptionalAuth(), followHandler.GetFollowStats)
-		follows.GET("/users/:userId/mutual-follows", authMiddleware.RequireAuth(), followHandler.GetMutualFollows)
+		follows.GET("/users/:id/followers", authMiddleware.OptionalAuth(), followHandler.GetFollowers)
+		follows.GET("/users/:id/following", authMiddleware.OptionalAuth(), followHandler.GetFollowing)
+		follows.GET("/users/:id/follow-stats", authMiddleware.OptionalAuth(), followHandler.GetFollowStats)
+		follows.GET("/users/:id/mutual-follows", authMiddleware.RequireAuth(), followHandler.GetMutualFollows)
 	}
 
-	// Protected follow routes
+	// Protected follow routes - FIXED: Changed :userId to :id
 	followsProtected := router.Group("/api/v1")
 	followsProtected.Use(authMiddleware.RequireAuth())
 	{
 		// Follow actions
-		followsProtected.POST("/users/:userId/follow", middleware.FollowRateLimit(), followHandler.FollowUser)
-		followsProtected.DELETE("/users/:userId/follow", followHandler.UnfollowUser)
-		followsProtected.GET("/users/:userId/follow-status", followHandler.CheckFollowStatus)
+		followsProtected.POST("/users/:id/follow", middleware.FollowRateLimit(), followHandler.FollowUser)
+		followsProtected.DELETE("/users/:id/follow", followHandler.UnfollowUser)
+		followsProtected.GET("/users/:id/follow-status", followHandler.CheckFollowStatus)
 
 		// Follow management
 		followsProtected.GET("/follow-requests", followHandler.GetFollowRequests)
@@ -35,8 +35,8 @@ func SetupFollowRoutes(router *gin.Engine, followHandler *handlers.FollowHandler
 		followsProtected.POST("/follow-requests/:followId/reject", followHandler.RejectFollowRequest)
 		followsProtected.DELETE("/follow-requests/:followId", followHandler.CancelFollowRequest)
 
-		// Follower management
-		followsProtected.DELETE("/followers/:userId", followHandler.RemoveFollower)
+		// Follower management - FIXED: Changed :userId to :id
+		followsProtected.DELETE("/followers/:id", followHandler.RemoveFollower)
 
 		// Follow discovery and suggestions
 		followsProtected.GET("/suggested-users", followHandler.GetSuggestedUsers)

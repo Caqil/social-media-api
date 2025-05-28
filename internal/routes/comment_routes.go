@@ -42,8 +42,8 @@ func SetupCommentRoutes(router *gin.Engine, commentHandler *handlers.CommentHand
 		commentsProtected.GET("/user/:userId", commentHandler.GetUserComments)
 	}
 
-	// Post-specific comment routes
-	postComments := router.Group("/api/v1/posts/:postId/comments")
+	// Post-specific comment routes - FIXED: Changed :postId to :id to avoid conflict
+	postComments := router.Group("/api/v1/posts/:id/comments")
 	{
 		// Public comment viewing
 		postComments.GET("/", authMiddleware.OptionalAuth(), commentHandler.GetPostComments)

@@ -55,6 +55,8 @@ type Services struct {
 	MediaService        *services.MediaService
 	LikeService         *services.LikeService
 	ReportService       *services.ReportService
+	EmailService        *services.EmailService
+	PushService         *services.PushService
 }
 
 // SetupRoutes initializes all routes for the API

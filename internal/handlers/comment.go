@@ -101,9 +101,10 @@ func (h *CommentHandler) GetComment(c *gin.Context) {
 	utils.OkResponse(c, "Comment retrieved successfully", comment.ToCommentResponse())
 }
 
-// GetPostComments retrieves comments for a specific post
+// GetPostComments retrieves comments for a specific post - UPDATED to use "id" parameter
 func (h *CommentHandler) GetPostComments(c *gin.Context) {
-	postIDStr := c.Param("postId")
+	// FIXED: Changed from c.Param("postId") to c.Param("id") to match the route parameter
+	postIDStr := c.Param("id")
 	postID, err := primitive.ObjectIDFromHex(postIDStr)
 	if err != nil {
 		utils.BadRequestResponse(c, "Invalid post ID format", err)

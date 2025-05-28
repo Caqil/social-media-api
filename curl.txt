@@ -1,0 +1,1146 @@
+Social Media API - Complete Curl Commands
+Health Check & API Info
+bash# Health check
+curl -X GET "http://localhost:8080/api/v1/health"
+
+# API info
+curl -X GET "http://localhost:8080/api/v1/"
+1. Authentication Routes
+Public Auth Routes
+bash# Register
+curl -X POST "http://localhost:8080/api/v1/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "johndoe",
+    "email": "john@example.com",
+    "password": "password123",
+    "first_name": "John",
+    "last_name": "Doe",
+    "display_name": "John Doe",
+    "bio": "Software developer",
+    "date_of_birth": "1990-01-01T00:00:00Z",
+    "gender": "male",
+    "phone": "+1234567890"
+  }'
+
+# Login
+curl -X POST "http://localhost:8080/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email_or_username": "john@example.com",
+    "password": "password123",
+    "device_info": "Chrome on macOS"
+  }'
+
+# Refresh token
+curl -X POST "http://localhost:8080/api/v1/auth/refresh" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refresh_token": "your_refresh_token_here"
+  }'
+
+# Forgot password
+curl -X POST "http://localhost:8080/api/v1/auth/forgot-password" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "john@example.com"
+  }'
+
+# Reset password
+curl -X POST "http://localhost:8080/api/v1/auth/reset-password" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "reset_token_here",
+    "new_password": "newpassword123",
+    "confirm_password": "newpassword123"
+  }'
+
+# Verify email
+curl -X GET "http://localhost:8080/api/v1/auth/verify-email?token=verification_token_here"
+Protected Auth Routes
+bash# Get profile
+curl -X GET "http://localhost:8080/api/v1/auth/profile" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Update profile
+curl -X PUT "http://localhost:8080/api/v1/auth/profile" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "first_name": "John Updated",
+    "bio": "Updated bio"
+  }'
+
+# Change password
+curl -X POST "http://localhost:8080/api/v1/auth/change-password" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "current_password": "oldpassword123",
+    "new_password": "newpassword123",
+    "confirm_password": "newpassword123"
+  }'
+
+# Get sessions
+curl -X GET "http://localhost:8080/api/v1/auth/sessions" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Revoke session
+curl -X DELETE "http://localhost:8080/api/v1/auth/sessions/session_id_here" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Logout
+curl -X POST "http://localhost:8080/api/v1/auth/logout" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Logout all sessions
+curl -X POST "http://localhost:8080/api/v1/auth/logout-all" \
+  -H "Authorization: Bearer your_access_token_here"
+2. User Routes
+Public User Routes
+bash# Search users
+curl -X GET "http://localhost:8080/api/v1/users/search?query=john&limit=10&skip=0"
+
+# Get user profile
+curl -X GET "http://localhost:8080/api/v1/users/user_id_here"
+
+# Get user by username
+curl -X GET "http://localhost:8080/api/v1/users/username/johndoe"
+
+# Get user stats
+curl -X GET "http://localhost:8080/api/v1/users/user_id_here/stats"
+Protected User Routes
+bash# Get suggested users
+curl -X GET "http://localhost:8080/api/v1/users/suggestions" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Update profile
+curl -X PUT "http://localhost:8080/api/v1/users/profile" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "first_name": "John",
+    "last_name": "Doe",
+    "bio": "Updated bio",
+    "website": "https://johndoe.com",
+    "location": "New York, NY"
+  }'
+
+# Update privacy settings
+curl -X PUT "http://localhost:8080/api/v1/users/privacy-settings" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "profile_visibility": "public",
+    "post_visibility": "friends",
+    "story_visibility": "public",
+    "allow_message_requests": true,
+    "show_online_status": false
+  }'
+
+# Update notification settings
+curl -X PUT "http://localhost:8080/api/v1/users/notification-settings" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "likes": true,
+    "comments": true,
+    "follows": true,
+    "mentions": true,
+    "messages": true,
+    "group_invites": false
+  }'
+
+# Update activity status
+curl -X PUT "http://localhost:8080/api/v1/users/activity-status" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "online"
+  }'
+
+# Deactivate account
+curl -X POST "http://localhost:8080/api/v1/users/deactivate" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Block user
+curl -X POST "http://localhost:8080/api/v1/users/user_id_here/block" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Unblock user
+curl -X DELETE "http://localhost:8080/api/v1/users/user_id_here/block" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get blocked users
+curl -X GET "http://localhost:8080/api/v1/users/blocked" \
+  -H "Authorization: Bearer your_access_token_here"
+Admin User Routes
+bash# Verify user
+curl -X POST "http://localhost:8080/api/v1/users/user_id_here/verify" \
+  -H "Authorization: Bearer your_admin_token_here"
+
+# Suspend user
+curl -X POST "http://localhost:8080/api/v1/users/user_id_here/suspend" \
+  -H "Authorization: Bearer your_admin_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reason": "Terms violation"
+  }'
+
+# Unsuspend user
+curl -X DELETE "http://localhost:8080/api/v1/users/user_id_here/suspend" \
+  -H "Authorization: Bearer your_admin_token_here"
+3. Post Routes
+Public Post Routes
+bash# Search posts
+curl -X GET "http://localhost:8080/api/v1/posts/search?query=technology&limit=10&skip=0"
+
+# Get trending posts
+curl -X GET "http://localhost:8080/api/v1/posts/trending?time_range=day&limit=20"
+
+# Get post
+curl -X GET "http://localhost:8080/api/v1/posts/post_id_here"
+
+# Get post stats
+curl -X GET "http://localhost:8080/api/v1/posts/post_id_here/stats"
+
+# Get post likes
+curl -X GET "http://localhost:8080/api/v1/posts/post_id_here/likes?limit=20&skip=0"
+Protected Post Routes
+bash# Create post
+curl -X POST "http://localhost:8080/api/v1/posts" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "This is my first post!",
+    "content_type": "text",
+    "visibility": "public",
+    "hashtags": ["technology", "coding"],
+    "comments_enabled": true,
+    "likes_enabled": true,
+    "shares_enabled": true
+  }'
+
+# Update post
+curl -X PUT "http://localhost:8080/api/v1/posts/post_id_here" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Updated post content",
+    "visibility": "friends"
+  }'
+
+# Delete post
+curl -X DELETE "http://localhost:8080/api/v1/posts/post_id_here" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Like post
+curl -X POST "http://localhost:8080/api/v1/posts/post_id_here/like" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reaction_type": "like"
+  }'
+
+# Unlike post
+curl -X DELETE "http://localhost:8080/api/v1/posts/post_id_here/like" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Report post
+curl -X POST "http://localhost:8080/api/v1/posts/post_id_here/report" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reason": "spam",
+    "description": "This post contains spam content"
+  }'
+
+# Pin post
+curl -X POST "http://localhost:8080/api/v1/posts/post_id_here/pin" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Unpin post
+curl -X DELETE "http://localhost:8080/api/v1/posts/post_id_here/pin" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get feed
+curl -X GET "http://localhost:8080/api/v1/posts/feed?limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get user posts
+curl -X GET "http://localhost:8080/api/v1/posts/user/user_id_here?limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+4. Comment Routes
+Public Comment Routes
+bash# Get comment
+curl -X GET "http://localhost:8080/api/v1/comments/comment_id_here"
+
+# Get comment thread
+curl -X GET "http://localhost:8080/api/v1/comments/comment_id_here/thread"
+
+# Get comment replies
+curl -X GET "http://localhost:8080/api/v1/comments/comment_id_here/replies?limit=20&skip=0"
+
+# Get comment likes
+curl -X GET "http://localhost:8080/api/v1/comments/comment_id_here/likes?limit=20&skip=0"
+
+# Get post comments
+curl -X GET "http://localhost:8080/api/v1/posts/post_id_here/comments?sort_by=newest&limit=20&skip=0"
+Protected Comment Routes
+bash# Create comment
+curl -X POST "http://localhost:8080/api/v1/comments" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "post_id": "post_id_here",
+    "content": "Great post!",
+    "content_type": "text",
+    "mentions": ["user_id_1", "user_id_2"]
+  }'
+
+# Create reply to comment
+curl -X POST "http://localhost:8080/api/v1/comments" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "post_id": "post_id_here",
+    "parent_comment_id": "parent_comment_id_here",
+    "content": "I agree with this comment!",
+    "content_type": "text"
+  }'
+
+# Update comment
+curl -X PUT "http://localhost:8080/api/v1/comments/comment_id_here" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Updated comment content"
+  }'
+
+# Delete comment
+curl -X DELETE "http://localhost:8080/api/v1/comments/comment_id_here" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Like comment
+curl -X POST "http://localhost:8080/api/v1/comments/comment_id_here/like" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reaction_type": "like"
+  }'
+
+# Unlike comment
+curl -X DELETE "http://localhost:8080/api/v1/comments/comment_id_here/like" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Report comment
+curl -X POST "http://localhost:8080/api/v1/comments/comment_id_here/report" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reason": "harassment",
+    "description": "This comment is harassing"
+  }'
+
+# Pin comment (post author only)
+curl -X POST "http://localhost:8080/api/v1/comments/comment_id_here/pin" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Unpin comment
+curl -X DELETE "http://localhost:8080/api/v1/comments/comment_id_here/pin" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get user comments
+curl -X GET "http://localhost:8080/api/v1/comments/user/user_id_here?limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+5. Follow Routes
+Public Follow Routes
+bash# Get user followers
+curl -X GET "http://localhost:8080/api/v1/users/user_id_here/followers?limit=20&skip=0"
+
+# Get user following
+curl -X GET "http://localhost:8080/api/v1/users/user_id_here/following?limit=20&skip=0"
+
+# Get follow stats
+curl -X GET "http://localhost:8080/api/v1/users/user_id_here/stats"
+Protected Follow Routes
+bash# Follow user
+curl -X POST "http://localhost:8080/api/v1/users/user_id_here/follow" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Unfollow user
+curl -X DELETE "http://localhost:8080/api/v1/users/user_id_here/follow" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Check follow status
+curl -X GET "http://localhost:8080/api/v1/users/user_id_here/follow-status" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get follow requests
+curl -X GET "http://localhost:8080/api/v1/follow-requests" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Accept follow request
+curl -X POST "http://localhost:8080/api/v1/follow-requests/follow_id_here/accept" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Reject follow request
+curl -X POST "http://localhost:8080/api/v1/follow-requests/follow_id_here/reject" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Cancel follow request
+curl -X DELETE "http://localhost:8080/api/v1/follow-requests/follow_id_here" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Remove follower
+curl -X DELETE "http://localhost:8080/api/v1/followers/user_id_here" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get mutual follows
+curl -X GET "http://localhost:8080/api/v1/users/user_id_here/mutual-follows?limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get suggested users
+curl -X GET "http://localhost:8080/api/v1/suggested-users?limit=20" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Bulk follow users
+curl -X POST "http://localhost:8080/api/v1/bulk-follow" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_ids": ["user_id_1", "user_id_2", "user_id_3"]
+  }'
+
+# Get follow activity
+curl -X GET "http://localhost:8080/api/v1/follow-activity?type=new_followers&limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+6. Story Routes
+Public Story Routes
+bash# Get active stories
+curl -X GET "http://localhost:8080/api/v1/stories/active?limit=20&skip=0"
+
+# Get story
+curl -X GET "http://localhost:8080/api/v1/stories/story_id_here"
+
+# Get story views
+curl -X GET "http://localhost:8080/api/v1/stories/story_id_here/views?limit=20&skip=0"
+
+# Get story reactions
+curl -X GET "http://localhost:8080/api/v1/stories/story_id_here/reactions?limit=20&skip=0"
+
+# Get story stats
+curl -X GET "http://localhost:8080/api/v1/stories/story_id_here/stats"
+
+# Get user stories
+curl -X GET "http://localhost:8080/api/v1/stories/user/user_id_here"
+Protected Story Routes
+bash# Create story
+curl -X POST "http://localhost:8080/api/v1/stories" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "My story content",
+    "content_type": "text",
+    "duration": 15,
+    "visibility": "public",
+    "allow_replies": true,
+    "allow_reactions": true,
+    "allow_sharing": true,
+    "allow_screenshot": true,
+    "background_color": "#FF5733",
+    "text_color": "#FFFFFF",
+    "hashtags": ["story", "life"]
+  }'
+
+# Update story
+curl -X PUT "http://localhost:8080/api/v1/stories/story_id_here" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "visibility": "friends",
+    "allow_replies": false
+  }'
+
+# Delete story
+curl -X DELETE "http://localhost:8080/api/v1/stories/story_id_here" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# View story
+curl -X POST "http://localhost:8080/api/v1/stories/story_id_here/view" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# React to story
+curl -X POST "http://localhost:8080/api/v1/stories/story_id_here/react" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reaction_type": "heart"
+  }'
+
+# Remove reaction from story
+curl -X DELETE "http://localhost:8080/api/v1/stories/story_id_here/react" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Archive story
+curl -X POST "http://localhost:8080/api/v1/stories/story_id_here/archive" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get archived stories
+curl -X GET "http://localhost:8080/api/v1/stories/archived?limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get following stories
+curl -X GET "http://localhost:8080/api/v1/stories/following" \
+  -H "Authorization: Bearer your_access_token_here"
+Story Highlights
+bash# Get user story highlights
+curl -X GET "http://localhost:8080/api/v1/story-highlights/user/user_id_here"
+
+# Create story highlight
+curl -X POST "http://localhost:8080/api/v1/story-highlights" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Travel Highlights",
+    "story_ids": ["story_id_1", "story_id_2"],
+    "cover_image": "image_url_here"
+  }'
+
+# Update story highlight
+curl -X PUT "http://localhost:8080/api/v1/story-highlights/highlight_id_here" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Updated Title"
+  }'
+
+# Delete story highlight
+curl -X DELETE "http://localhost:8080/api/v1/story-highlights/highlight_id_here" \
+  -H "Authorization: Bearer your_access_token_here"
+7. Group Routes
+Public Group Routes
+bash# Get public groups
+curl -X GET "http://localhost:8080/api/v1/groups?limit=20&offset=0"
+
+# Search groups
+curl -X GET "http://localhost:8080/api/v1/groups/search?query=technology&limit=20&offset=0"
+
+# Get trending groups
+curl -X GET "http://localhost:8080/api/v1/groups/trending?time_range=week&limit=20&offset=0"
+
+# Get group categories
+curl -X GET "http://localhost:8080/api/v1/groups/categories"
+
+# Get group
+curl -X GET "http://localhost:8080/api/v1/groups/group_id_here"
+
+# Get group members
+curl -X GET "http://localhost:8080/api/v1/groups/group_id_here/members?limit=20&offset=0"
+Protected Group Routes
+bash# Create group
+curl -X POST "http://localhost:8080/api/v1/groups" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Tech Enthusiasts",
+    "description": "A group for technology enthusiasts",
+    "privacy": "public",
+    "category": "technology",
+    "tags": ["programming", "tech", "innovation"],
+    "location": {"city": "San Francisco", "country": "USA"},
+    "rules": ["Be respectful", "No spam", "Stay on topic"],
+    "post_approval_required": false,
+    "member_approval_required": false,
+    "allow_member_invites": true
+  }'
+
+# Update group
+curl -X PUT "http://localhost:8080/api/v1/groups/group_id_here" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Updated description",
+    "privacy": "private"
+  }'
+
+# Delete group
+curl -X DELETE "http://localhost:8080/api/v1/groups/group_id_here" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Join group
+curl -X POST "http://localhost:8080/api/v1/groups/group_id_here/join" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "I would like to join this group"
+  }'
+
+# Leave group
+curl -X POST "http://localhost:8080/api/v1/groups/group_id_here/leave" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Invite to group
+curl -X POST "http://localhost:8080/api/v1/groups/group_id_here/invite" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_ids": ["user_id_1", "user_id_2"],
+    "message": "Join our awesome group!"
+  }'
+
+# Update member role
+curl -X PUT "http://localhost:8080/api/v1/groups/group_id_here/members/member_id_here/role" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "role": "moderator"
+  }'
+
+# Remove group member
+curl -X DELETE "http://localhost:8080/api/v1/groups/group_id_here/members/member_id_here" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get group stats
+curl -X GET "http://localhost:8080/api/v1/groups/group_id_here/stats" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get my groups
+curl -X GET "http://localhost:8080/api/v1/groups/my-groups?limit=20&offset=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get group invites
+curl -X GET "http://localhost:8080/api/v1/groups/invites" \
+  -H "Authorization: Bearer your_access_token_here"
+Group Invitations
+bash# Accept group invite
+curl -X POST "http://localhost:8080/api/v1/group-invites/invite_id_here/accept" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Reject group invite
+curl -X POST "http://localhost:8080/api/v1/group-invites/invite_id_here/reject" \
+  -H "Authorization: Bearer your_access_token_here"
+8. Messaging Routes
+Conversation Management
+bash# Create conversation
+curl -X POST "http://localhost:8080/api/v1/messaging/conversations" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "direct",
+    "participant_ids": ["user_id_1", "user_id_2"],
+    "title": "Chat with John",
+    "initial_message": "Hey there!"
+  }'
+
+# Get user conversations
+curl -X GET "http://localhost:8080/api/v1/messaging/conversations?limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Search conversations
+curl -X GET "http://localhost:8080/api/v1/messaging/conversations/search?query=john&limit=10&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get unread counts
+curl -X GET "http://localhost:8080/api/v1/messaging/conversations/unread-counts" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get conversation
+curl -X GET "http://localhost:8080/api/v1/messaging/conversations/conversation_id_here" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Update conversation
+curl -X PUT "http://localhost:8080/api/v1/messaging/conversations/conversation_id_here" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Updated title",
+    "description": "Updated description"
+  }'
+
+# Leave conversation
+curl -X DELETE "http://localhost:8080/api/v1/messaging/conversations/conversation_id_here/leave" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get conversation stats
+curl -X GET "http://localhost:8080/api/v1/messaging/conversations/conversation_id_here/stats" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Add participants
+curl -X POST "http://localhost:8080/api/v1/messaging/conversations/conversation_id_here/participants" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "participant_ids": ["user_id_3", "user_id_4"]
+  }'
+
+# Remove participant
+curl -X DELETE "http://localhost:8080/api/v1/messaging/conversations/conversation_id_here/participants/participant_id_here" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Update participant role
+curl -X PUT "http://localhost:8080/api/v1/messaging/conversations/conversation_id_here/participants/participant_id_here/role" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "role": "admin"
+  }'
+
+# Mute conversation
+curl -X PUT "http://localhost:8080/api/v1/messaging/conversations/conversation_id_here/mute" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "muted": true,
+    "mute_until": "2024-12-31T23:59:59Z"
+  }'
+
+# Archive conversation
+curl -X PUT "http://localhost:8080/api/v1/messaging/conversations/conversation_id_here/archive" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "archived": true
+  }'
+Message Management
+bash# Get conversation messages
+curl -X GET "http://localhost:8080/api/v1/messaging/conversations/conversation_id_here/messages?limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Send message
+curl -X POST "http://localhost:8080/api/v1/messaging/conversations/conversation_id_here/messages" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Hello there!",
+    "content_type": "text",
+    "reply_to_message_id": "message_id_here",
+    "priority": "normal"
+  }'
+
+# Mark as read
+curl -X POST "http://localhost:8080/api/v1/messaging/conversations/conversation_id_here/mark-read" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "last_message_id": "message_id_here"
+  }'
+
+# Send message (direct)
+curl -X POST "http://localhost:8080/api/v1/messaging/messages" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "conversation_id": "conversation_id_here",
+    "content": "Direct message",
+    "content_type": "text"
+  }'
+
+# Get messages
+curl -X GET "http://localhost:8080/api/v1/messaging/messages/conversation_id_here?limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Update message
+curl -X PUT "http://localhost:8080/api/v1/messaging/messages/message_id_here" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Updated message content"
+  }'
+
+# Delete message
+curl -X DELETE "http://localhost:8080/api/v1/messaging/messages/message_id_here" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# React to message
+curl -X POST "http://localhost:8080/api/v1/messaging/messages/message_id_here/react" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reaction_type": "thumbs_up"
+  }'
+
+# Search messages
+curl -X GET "http://localhost:8080/api/v1/messaging/messages/search?query=hello&limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get message stats
+curl -X GET "http://localhost:8080/api/v1/messaging/messages/stats" \
+  -H "Authorization: Bearer your_access_token_here"
+9. Feed Routes
+bash# Get personalized feed
+curl -X GET "http://localhost:8080/api/v1/feeds/personalized?limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get following feed
+curl -X GET "http://localhost:8080/api/v1/feeds/following?limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get trending feed
+curl -X GET "http://localhost:8080/api/v1/feeds/trending?limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get discover feed
+curl -X GET "http://localhost:8080/api/v1/feeds/discover?limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Record interaction
+curl -X POST "http://localhost:8080/api/v1/feeds/interactions" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "post_id": "post_id_here",
+    "interaction_type": "view",
+    "time_spent": 30,
+    "source": "feed"
+  }'
+
+# Refresh feed
+curl -X POST "http://localhost:8080/api/v1/feeds/refresh" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "feed_type": "personalized"
+  }'
+
+# Hide post
+curl -X POST "http://localhost:8080/api/v1/feeds/posts/post_id_here/hide" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get feed preferences
+curl -X GET "http://localhost:8080/api/v1/feeds/preferences" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Update feed preferences
+curl -X PUT "http://localhost:8080/api/v1/feeds/preferences" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "show_liked_posts": true,
+    "show_shared_posts": false,
+    "algorithm_preference": "chronological"
+  }'
+
+# Get feed analytics
+curl -X GET "http://localhost:8080/api/v1/feeds/analytics" \
+  -H "Authorization: Bearer your_access_token_here"
+10. Search Routes
+Public Search Routes
+bash# General search
+curl -X GET "http://localhost:8080/api/v1/search?query=technology&type=all&limit=20&skip=0"
+
+# Search posts
+curl -X GET "http://localhost:8080/api/v1/search/posts?query=programming&sort_by=relevance&limit=20&skip=0"
+
+# Search users
+curl -X GET "http://localhost:8080/api/v1/search/users?query=john&limit=20&skip=0"
+
+# Search hashtags
+curl -X GET "http://localhost:8080/api/v1/search/hashtags?query=tech&limit=10"
+
+# Get search suggestions
+curl -X GET "http://localhost:8080/api/v1/search/suggestions?query=prog"
+
+# Get trending hashtags
+curl -X GET "http://localhost:8080/api/v1/search/trending/hashtags?time_range=week&limit=20"
+
+# Get popular searches
+curl -X GET "http://localhost:8080/api/v1/search/popular?limit=10"
+Protected Search Routes
+bash# Get search history
+curl -X GET "http://localhost:8080/api/v1/search/history?limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Clear search history
+curl -X DELETE "http://localhost:8080/api/v1/search/history" \
+  -H "Authorization: Bearer your_access_token_here"
+11. Reactions/Likes Routes
+Public Reaction Routes
+bash# Get reaction types
+curl -X GET "http://localhost:8080/api/v1/reactions/types"
+
+# Get likes for post
+curl -X GET "http://localhost:8080/api/v1/reactions/post/post_id_here?limit=20&skip=0"
+
+# Get reaction summary
+curl -X GET "http://localhost:8080/api/v1/reactions/post/post_id_here/summary"
+
+# Get detailed reaction stats
+curl -X GET "http://localhost:8080/api/v1/reactions/post/post_id_here/stats"
+
+# Get trending reactions
+curl -X GET "http://localhost:8080/api/v1/reactions/trending?target_type=post&time_range=24h&limit=10"
+Protected Reaction Routes
+bash# Create reaction
+curl -X POST "http://localhost:8080/api/v1/reactions" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "target_id": "post_id_here",
+    "target_type": "post",
+    "reaction_type": "heart"
+  }'
+
+# Update reaction
+curl -X PUT "http://localhost:8080/api/v1/reactions/reaction_id_here" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reaction_type": "laugh"
+  }'
+
+# Delete reaction
+curl -X DELETE "http://localhost:8080/api/v1/reactions/post/post_id_here" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Check user reaction
+curl -X GET "http://localhost:8080/api/v1/reactions/post/post_id_here/check" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get my reactions
+curl -X GET "http://localhost:8080/api/v1/reactions/my-reactions?target_type=post&limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get user likes
+curl -X GET "http://localhost:8080/api/v1/reactions/users/user_id_here?limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+12. Notification Routes
+bash# Get notifications
+curl -X GET "http://localhost:8080/api/v1/notifications?unread_only=false&limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get notification stats
+curl -X GET "http://localhost:8080/api/v1/notifications/stats" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Mark as read
+curl -X POST "http://localhost:8080/api/v1/notifications/mark-read" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "notification_ids": ["notification_id_1", "notification_id_2"]
+  }'
+
+# Mark all as read
+curl -X POST "http://localhost:8080/api/v1/notifications/mark-all-read" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Delete notifications
+curl -X DELETE "http://localhost:8080/api/v1/notifications" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "notification_ids": ["notification_id_1", "notification_id_2"]
+  }'
+
+# Get notification preferences
+curl -X GET "http://localhost:8080/api/v1/notifications/preferences" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Update notification preferences
+curl -X PUT "http://localhost:8080/api/v1/notifications/preferences" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "likes": {
+      "enabled": true,
+      "push": true,
+      "email": false
+    },
+    "comments": {
+      "enabled": true,
+      "push": true,
+      "email": true
+    },
+    "follows": {
+      "enabled": true,
+      "push": true,
+      "email": false
+    }
+  }'
+
+# Test notification
+curl -X POST "http://localhost:8080/api/v1/notifications/test" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Test Notification",
+    "body": "This is a test notification"
+  }'
+13. Media Routes
+Public Media Routes
+bash# Get media
+curl -X GET "http://localhost:8080/api/v1/media/media_id_here"
+
+# Download media
+curl -X GET "http://localhost:8080/api/v1/media/media_id_here/download"
+
+# Get media variant
+curl -X GET "http://localhost:8080/api/v1/media/media_id_here/variants/thumbnail"
+
+# Get media metadata
+curl -X GET "http://localhost:8080/api/v1/media/media_id_here/metadata"
+
+# Search media
+curl -X GET "http://localhost:8080/api/v1/media/search?query=nature&type=image&limit=20&skip=0"
+
+# Get user media
+curl -X GET "http://localhost:8080/api/v1/media/user/user_id_here?type=image&limit=20&skip=0"
+Protected Media Routes
+bash# Upload media
+curl -X POST "http://localhost:8080/api/v1/media/upload" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -F "file=@path/to/your/image.jpg" \
+  -F "type=image" \
+  -F "category=profile" \
+  -F "is_public=true" \
+  -F "alt_text=Profile picture" \
+  -F "description=My new profile picture"
+
+# Update media
+curl -X PUT "http://localhost:8080/api/v1/media/media_id_here" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "alt_text": "Updated alt text",
+    "description": "Updated description",
+    "is_public": false
+  }'
+
+# Delete media
+curl -X DELETE "http://localhost:8080/api/v1/media/media_id_here" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get media stats
+curl -X GET "http://localhost:8080/api/v1/media/stats" \
+  -H "Authorization: Bearer your_access_token_here"
+14. Report Routes
+User Report Routes
+bash# Create report
+curl -X POST "http://localhost:8080/api/v1/reports" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "target_id": "post_id_here",
+    "target_type": "post",
+    "reason": "spam",
+    "description": "This post contains spam content",
+    "category": "content_violation"
+  }'
+
+# Get my reports
+curl -X GET "http://localhost:8080/api/v1/reports/my-reports?limit=20&skip=0" \
+  -H "Authorization: Bearer your_access_token_here"
+
+# Get report reasons
+curl -X GET "http://localhost:8080/api/v1/reports/reasons"
+
+# Get report categories
+curl -X GET "http://localhost:8080/api/v1/reports/categories"
+Moderator Report Routes
+bash# Get pending reports
+curl -X GET "http://localhost:8080/api/v1/moderator/reports/pending?limit=20&skip=0" \
+  -H "Authorization: Bearer your_moderator_token_here"
+
+# Get reports
+curl -X GET "http://localhost:8080/api/v1/moderator/reports?status=pending&limit=20&skip=0" \
+  -H "Authorization: Bearer your_moderator_token_here"
+
+# Get report
+curl -X GET "http://localhost:8080/api/v1/moderator/reports/report_id_here" \
+  -H "Authorization: Bearer your_moderator_token_here"
+
+# Update report
+curl -X PUT "http://localhost:8080/api/v1/moderator/reports/report_id_here" \
+  -H "Authorization: Bearer your_moderator_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "reviewing",
+    "priority": "high"
+  }'
+
+# Resolve report
+curl -X POST "http://localhost:8080/api/v1/moderator/reports/report_id_here/resolve" \
+  -H "Authorization: Bearer your_moderator_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resolution": "content_removed",
+    "note": "Content violated community guidelines"
+  }'
+
+# Reject report
+curl -X POST "http://localhost:8080/api/v1/moderator/reports/report_id_here/reject" \
+  -H "Authorization: Bearer your_moderator_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "note": "Report does not violate community guidelines"
+  }'
+Admin Report Routes
+bash# Get all reports
+curl -X GET "http://localhost:8080/api/v1/admin/reports?status=pending&priority=high&limit=20&skip=0" \
+  -H "Authorization: Bearer your_admin_token_here"
+
+# Get report
+curl -X GET "http://localhost:8080/api/v1/admin/reports/report_id_here" \
+  -H "Authorization: Bearer your_admin_token_here"
+
+# Update report
+curl -X PUT "http://localhost:8080/api/v1/admin/reports/report_id_here" \
+  -H "Authorization: Bearer your_admin_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "resolved",
+    "assigned_to": "moderator_id_here",
+    "priority": "urgent"
+  }'
+
+# Assign report
+curl -X POST "http://localhost:8080/api/v1/admin/reports/report_id_here/assign" \
+  -H "Authorization: Bearer your_admin_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "assigned_to": "moderator_id_here"
+  }'
+
+# Resolve report
+curl -X POST "http://localhost:8080/api/v1/admin/reports/report_id_here/resolve" \
+  -H "Authorization: Bearer your_admin_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resolution": "user_suspended",
+    "note": "User suspended for repeated violations"
+  }'
+
+# Reject report
+curl -X POST "http://localhost:8080/api/v1/admin/reports/report_id_here/reject" \
+  -H "Authorization: Bearer your_admin_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "note": "False positive report"
+  }'
+
+# Get report stats
+curl -X GET "http://localhost:8080/api/v1/admin/reports/stats" \
+  -H "Authorization: Bearer your_admin_token_here"
+
+# Get report summary
+curl -X GET "http://localhost:8080/api/v1/admin/reports/summary" \
+  -H "Authorization: Bearer your_admin_token_here"
+
+# Get reports by target
+curl -X GET "http://localhost:8080/api/v1/admin/reports/target/post/post_id_here?limit=20&skip=0" \
+  -H "Authorization: Bearer your_admin_token_here"
+
+# Get user reports
+curl -X GET "http://localhost:8080/api/v1/admin/reports/user/user_id_here?limit=20&skip=0" \
+  -H "Authorization: Bearer your_admin_token_here"
+Notes
+
+Replace placeholders: Replace your_access_token_here, user_id_here, post_id_here, etc. with actual values
+File uploads: For media upload endpoints, use -F flag with form data instead of JSON
+Authentication: Most protected routes require Authorization: Bearer <token> header
+Query parameters: Adjust limit, skip, and other query parameters as needed
+Error handling: Add proper error handling for production use
+Rate limiting: Be aware of rate limits on certain endpoints
+
+This comprehensive list covers all the main API endpoints based on the service code structure. Each endpoint includes the appropriate HTTP method, headers, and request body where applicable.

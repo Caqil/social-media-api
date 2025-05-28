@@ -557,7 +557,18 @@ func (as *AdminService) GetUsers(filter models.AdminUserFilter, limit, skip int)
 
 	return users, totalCount, nil
 }
-
+func getUserStatus(user *models.User) models.UserStatus {
+	if !user.IsActive {
+		return models.UserStatusInactive
+	}
+	if user.IsSuspended {
+		return models.UserStatusSuspended
+	}
+	if !user.EmailVerified {
+		return models.UserStatusVerifying
+	}
+	return models.UserStatusActive
+}
 func (as *AdminService) GetUserDetail(userID primitive.ObjectID) (*models.AdminUserDetail, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -576,7 +587,7 @@ func (as *AdminService) GetUserDetail(userID primitive.ObjectID) (*models.AdminU
 			Email:       user.Email,
 			FirstName:   user.FirstName,
 			LastName:    user.LastName,
-			Status:      user.UserStatus,
+			Status:      getUserStatus(&user),
 			Role:        user.Role,
 			IsVerified:  user.IsVerified,
 			CreatedAt:   user.CreatedAt,

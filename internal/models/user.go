@@ -50,7 +50,7 @@ type User struct {
 	LastLoginAt  *time.Time `json:"last_login_at,omitempty" bson:"last_login_at,omitempty"`
 	LastActiveAt *time.Time `json:"last_active_at,omitempty" bson:"last_active_at,omitempty"`
 	OnlineStatus string     `json:"online_status" bson:"online_status"` // online, offline, away
-
+	Status       UserStatus `json:"status" bson:"status"`
 	// Settings
 	PrivacySettings      PrivacySettings      `json:"privacy_settings" bson:"privacy_settings"`
 	NotificationSettings NotificationSettings `json:"notification_settings" bson:"notification_settings"`

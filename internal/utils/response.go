@@ -351,6 +351,10 @@ func getValidationErrorMessage(fe validator.FieldError) string {
 		return field + " is invalid"
 	}
 }
+func ValidateStruct(data interface{}) error {
+	validate := validator.New()
+	return validate.Struct(data)
+}
 
 // ApiResponse represents a generic API response wrapper
 type ApiResponse struct {

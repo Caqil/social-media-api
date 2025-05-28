@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 	"social-media-api/internal/config"
-	"social-media-api/routes"
+	"social-media-api/internal/routes"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"

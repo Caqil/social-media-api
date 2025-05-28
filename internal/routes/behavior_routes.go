@@ -62,27 +62,39 @@ func SetupBehaviorRoutes(router *gin.Engine, behaviorHandler *handlers.UserBehav
 	}
 }
 
-// SetupEnhancedFeedRoutes sets up behavior-enhanced feed routes
-func SetupEnhancedFeedRoutes(router *gin.Engine, feedHandler *handlers.FeedHandler, enhancedFeedHandler *handlers.EnhancedFeedHandler, authMiddleware middleware.AuthMiddleware, behaviorMiddleware *middleware.BehaviorTrackingMiddleware) {
+// SetupEnhancedFeedRoutes sets up behavior-enhanced feed routes using regular FeedHandler
+func SetupEnhancedFeedRoutes(router *gin.Engine, feedHandler *handlers.FeedHandler, authMiddleware middleware.AuthMiddleware, behaviorMiddleware *middleware.BehaviorTrackingMiddleware) {
 
 	// Enhanced feed routes with behavior tracking
 	feedRoutes := router.Group("/api/v1/feeds")
 	feedRoutes.Use(authMiddleware.RequireAuth())
 	feedRoutes.Use(behaviorMiddleware.TrackContentInteraction())
 	{
-		// Behavior-driven feeds
-		feedRoutes.GET("/smart-personalized", enhancedFeedHandler.GetSmartPersonalizedFeed)
-		feedRoutes.GET("/behavior-following", enhancedFeedHandler.GetBehaviorFollowingFeed)
-		feedRoutes.GET("/smart-trending", enhancedFeedHandler.GetSmartTrendingFeed)
-		feedRoutes.GET("/intelligent-discover", enhancedFeedHandler.GetIntelligentDiscoverFeed)
+		// Behavior-driven feeds (using regular FeedHandler with behavior algorithm)
+		feedRoutes.GET("/smart-personalized", func(c *gin.Context) {
+			c.Set("algorithm", "behavior")
+			feedHandler.GetPersonalizedFeed(c)
+		})
+		feedRoutes.GET("/behavior-following", func(c *gin.Context) {
+			c.Set("algorithm", "behavior")
+			feedHandler.GetFollowingFeed(c)
+		})
+		feedRoutes.GET("/smart-trending", func(c *gin.Context) {
+			c.Set("algorithm", "behavior")
+			feedHandler.GetTrendingFeed(c)
+		})
+		feedRoutes.GET("/intelligent-discover", func(c *gin.Context) {
+			c.Set("algorithm", "behavior")
+			feedHandler.GetDiscoverFeed(c)
+		})
 
 		// Enhanced feed interactions
-		feedRoutes.POST("/interactions/enhanced", enhancedFeedHandler.RecordEnhancedInteraction)
-		feedRoutes.GET("/analytics/enhanced", enhancedFeedHandler.GetEnhancedFeedAnalytics)
+		feedRoutes.POST("/interactions/enhanced", feedHandler.RecordInteraction)
+		feedRoutes.GET("/analytics/enhanced", feedHandler.GetFeedAnalytics)
 
 		// Feed optimization
-		feedRoutes.POST("/optimize", enhancedFeedHandler.OptimizeFeed)
-		feedRoutes.GET("/recommendations/explain", enhancedFeedHandler.ExplainRecommendations)
+		feedRoutes.POST("/optimize", feedHandler.RefreshFeed)
+		feedRoutes.GET("/recommendations/explain", feedHandler.GetBehaviorInsights)
 	}
 
 	// Original feed routes (still available)

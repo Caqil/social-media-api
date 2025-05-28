@@ -646,6 +646,82 @@ func (ns *NotificationService) NotifyMention(actorID, recipientID, contentID pri
 	return err
 }
 
+// NotifyUserSuspension creates a user suspension notification
+func (ns *NotificationService) NotifyUserSuspension(userID primitive.ObjectID, reason, duration string) error {
+	message := "Your account has been suspended"
+	if reason != "" {
+		message = fmt.Sprintf("Your account has been suspended. Reason: %s", reason)
+	}
+
+	title := "Account Suspended"
+	if duration != "" && duration != "permanent" {
+		title = fmt.Sprintf("Account Suspended (%s)", duration)
+		message = fmt.Sprintf("Your account has been temporarily suspended for %s. Reason: %s", duration, reason)
+	} else if duration == "permanent" {
+		title = "Account Permanently Suspended"
+		message = fmt.Sprintf("Your account has been permanently suspended. Reason: %s", reason)
+	}
+
+	// Create system admin ID for system notifications
+	systemAdminID := primitive.NewObjectID()
+
+	req := models.CreateNotificationRequest{
+		RecipientID:  userID.Hex(),
+		ActorID:      systemAdminID.Hex(),
+		Type:         models.NotificationMessage, // Using existing notification type
+		Title:        title,
+		Message:      message,
+		ActionText:   "Contact Support",
+		TargetType:   "system",
+		TargetURL:    "/support/appeal",
+		Priority:     "high",
+		SendViaEmail: true,
+		SendViaPush:  true,
+		SendViaSMS:   true,
+		Metadata: map[string]interface{}{
+			"suspension_reason":   reason,
+			"suspension_duration": duration,
+			"notification_type":   "account_suspension",
+			"is_system_message":   true,
+		},
+	}
+
+	_, err := ns.CreateNotification(req)
+	return err
+}
+
+// NotifyUserUnsuspension creates a user unsuspension notification
+func (ns *NotificationService) NotifyUserUnsuspension(userID primitive.ObjectID, note string) error {
+	message := "Your account has been reactivated. You can now use all platform features."
+	if note != "" {
+		message = fmt.Sprintf("Your account has been reactivated. Note: %s", note)
+	}
+
+	systemAdminID := primitive.NewObjectID()
+
+	req := models.CreateNotificationRequest{
+		RecipientID:  userID.Hex(),
+		ActorID:      systemAdminID.Hex(),
+		Type:         models.NotificationMessage,
+		Title:        "Account Reactivated",
+		Message:      message,
+		ActionText:   "Continue",
+		TargetType:   "system",
+		TargetURL:    "/dashboard",
+		Priority:     "medium",
+		SendViaEmail: true,
+		SendViaPush:  true,
+		Metadata: map[string]interface{}{
+			"notification_type": "account_reactivation",
+			"note":              note,
+			"is_system_message": true,
+		},
+	}
+
+	_, err := ns.CreateNotification(req)
+	return err
+}
+
 // NotifyMessage creates a message notification
 func (ns *NotificationService) NotifyMessage(actorID, recipientID, conversationID primitive.ObjectID) error {
 	if actorID == recipientID {

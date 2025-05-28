@@ -16,6 +16,7 @@ import (
 type APIRouter struct {
 	// Handlers
 	AuthHandler         *handlers.AuthHandler
+	AdminHandler        *handlers.AdminHandler
 	UserHandler         *handlers.UserHandler
 	PostHandler         *handlers.PostHandler
 	CommentHandler      *handlers.CommentHandler
@@ -30,10 +31,10 @@ type APIRouter struct {
 	MediaHandler        *handlers.MediaHandler
 	LikeHandler         *handlers.LikeHandler
 	ReportHandler       *handlers.ReportHandler
-
+	BehaviorHandler     *handlers.UserBehaviorHandler
 	// Middleware
-	AuthMiddleware *middleware.AuthMiddleware
-
+	AuthMiddleware     *middleware.AuthMiddleware
+	BehaviorMiddleware *middleware.BehaviorTrackingMiddleware
 	// Services (for dependency injection)
 	Services *Services
 }
@@ -41,6 +42,7 @@ type APIRouter struct {
 // Services holds all service instances
 type Services struct {
 	AuthService         *services.AuthService
+	AdminService        *services.AdminService
 	UserService         *services.UserService
 	PostService         *services.PostService
 	CommentService      *services.CommentService
@@ -57,6 +59,8 @@ type Services struct {
 	ReportService       *services.ReportService
 	EmailService        *services.EmailService
 	PushService         *services.PushService
+	BehaviorService     *services.UserBehaviorService // Added behavior service
+	AnalyticsService    *services.AnalyticsService
 }
 
 // SetupRoutes initializes all routes for the API
@@ -90,7 +94,7 @@ func SetupRoutes(router *gin.Engine, apiRouter *APIRouter) {
 	SetupSocialRoutes(router, apiRouter.FeedHandler, apiRouter.SearchHandler, apiRouter.LikeHandler, apiRouter.AuthMiddleware)
 	SetupNotificationRoutes(router, apiRouter.NotificationHandler, apiRouter.AuthMiddleware)
 	SetupMediaRoutes(router, apiRouter.MediaHandler, apiRouter.AuthMiddleware)
-	SetupAdminRoutes(router, apiRouter.ReportHandler, apiRouter.AuthMiddleware)
+	SetupAdminRoutes(router, apiRouter.AdminHandler, apiRouter.AuthMiddleware)
 
 	// 404 handler
 	router.NoRoute(middleware.NotFoundHandler())
@@ -154,7 +158,7 @@ func apiInfo(c *gin.Context) {
 }
 
 // NewAPIRouter creates a new API router with all dependencies
-func NewAPIRouter(services *Services, authMiddleware *middleware.AuthMiddleware) *APIRouter {
+func NewAPIRouter(services *Services, authMiddleware *middleware.AuthMiddleware, behaviorMiddleware *middleware.BehaviorTrackingMiddleware) *APIRouter {
 	return &APIRouter{
 		// Initialize handlers with their respective services
 		AuthHandler:         handlers.NewAuthHandler(services.AuthService, services.UserService),
@@ -166,16 +170,16 @@ func NewAPIRouter(services *Services, authMiddleware *middleware.AuthMiddleware)
 		ConversationHandler: handlers.NewConversationHandler(services.ConversationService, services.MessageService, services.NotificationService),
 		StoryHandler:        handlers.NewStoryHandler(services.StoryService),
 		GroupHandler:        handlers.NewGroupHandler(services.GroupService),
-		FeedHandler:         handlers.NewFeedHandler(services.FeedService),
+		FeedHandler:         handlers.NewFeedHandler(services.FeedService, services.BehaviorService),
 		SearchHandler:       handlers.NewSearchHandler(services.SearchService),
 		NotificationHandler: handlers.NewNotificationHandler(services.NotificationService),
 		MediaHandler:        handlers.NewMediaHandler(services.MediaService),
 		LikeHandler:         handlers.NewLikeHandler(services.LikeService),
 		ReportHandler:       handlers.NewReportHandler(services.ReportService),
-
+		BehaviorHandler:     handlers.NewUserBehaviorHandler(services.BehaviorService, services.AnalyticsService),
 		// Middleware
-		AuthMiddleware: authMiddleware,
-
+		AuthMiddleware:     authMiddleware,
+		BehaviorMiddleware: behaviorMiddleware,
 		// Services
 		Services: services,
 	}

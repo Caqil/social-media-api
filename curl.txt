@@ -1134,6 +1134,262 @@ curl -X GET "http://localhost:8080/api/v1/admin/reports/target/post/post_id_here
 # Get user reports
 curl -X GET "http://localhost:8080/api/v1/admin/reports/user/user_id_here?limit=20&skip=0" \
   -H "Authorization: Bearer your_admin_token_here"
+
+
+# Social Media API - Behavior-Enhanced Curl Examples
+
+## Authentication Setup
+# First, get your access token
+export ACCESS_TOKEN="your_access_token_here"
+export API_BASE="http://localhost:8080/api/v1"
+
+# Test authentication
+curl -X GET "$API_BASE/auth/profile" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+## Behavior-Enhanced Feed Endpoints
+
+# Get personalized feed with behavior algorithm
+curl -X GET "$API_BASE/feeds/personalized?algorithm=behavior&limit=20" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+# Get following feed with behavior enhancements
+curl -X GET "$API_BASE/feeds/following?algorithm=behavior&prioritize_engagement=true" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+# Get smart trending feed
+curl -X GET "$API_BASE/feeds/smart-trending?time_range=24h&location=us" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+# Get intelligent discover feed
+curl -X GET "$API_BASE/feeds/intelligent-discover?diversity=high&explore_new=true" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+## Enhanced Feed Interactions
+
+# Record enhanced interaction with detailed tracking
+curl -X POST "$API_BASE/feeds/interactions/enhanced" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content_id": "post_id_here",
+    "content_type": "post",
+    "interaction_type": "view",
+    "source": "feed",
+    "view_duration": 15000,
+    "scroll_depth": 85.5,
+    "click_position": {"x": 0.3, "y": 0.7},
+    "feed_position": 3,
+    "time_spent": 30000,
+    "quality": 0.8,
+    "sentiment": "positive",
+    "context": {
+      "session_id": "session_123",
+      "device_type": "mobile",
+      "connection_type": "wifi"
+    }
+  }'
+
+# Record standard interaction
+curl -X POST "$API_BASE/feeds/interactions" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "post_id": "post_id_here",
+    "interaction_type": "like",
+    "source": "feed",
+    "time_spent": 5000,
+    "feed_position": 2,
+    "scroll_depth": 70.0,
+    "view_duration": 8000
+  }'
+
+## Feed Management
+
+# Refresh personalized feed
+curl -X POST "$API_BASE/feeds/refresh" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "feed_type": "personalized"
+  }'
+
+# Hide post from feed
+curl -X POST "$API_BASE/feeds/posts/post_id_here/hide" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reason": "not_interested"
+  }'
+
+# Report feed issue
+curl -X POST "$API_BASE/feeds/report-issue" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "issue_type": "irrelevant",
+    "description": "Feed shows too many posts about topics I am not interested in",
+    "feed_type": "personalized",
+    "post_id": "post_id_here"
+  }'
+
+## Feed Preferences
+
+# Get current feed preferences
+curl -X GET "$API_BASE/feeds/preferences" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+# Update feed preferences
+curl -X PUT "$API_BASE/feeds/preferences" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "algorithm_type": "behavior",
+    "show_liked_posts": true,
+    "show_shared_posts": false,
+    "show_reposted_content": true,
+    "show_promoted_content": false,
+    "content_type_weights": {
+      "text": 0.7,
+      "image": 1.0,
+      "video": 0.9,
+      "link": 0.6
+    },
+    "source_preferences": {
+      "following": 1.0,
+      "suggested": 0.4,
+      "trending": 0.6,
+      "local_content": 0.3
+    },
+    "notification_settings": {
+      "new_followers_in_feed": true,
+      "trending_topics": false,
+      "personalized_updates": true
+    },
+    "privacy_settings": {
+      "allow_data_for_personalization": true,
+      "share_engagement_data": false
+    }
+  }'
+
+## Behavior Analytics
+
+# Get comprehensive user behavior analytics
+curl -X GET "$API_BASE/feeds/analytics/enhanced?time_range=week&include_recommendations=true&include_predictions=true" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+# Get basic feed analytics
+curl -X GET "$API_BASE/feeds/analytics?time_range=month" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+# Get behavior insights
+curl -X GET "$API_BASE/feeds/behavior-insights?time_range=week" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+## Behavior Tracking Endpoints
+
+# Start user session
+curl -X POST "$API_BASE/behavior/sessions/start" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "session_123456",
+    "device_info": "Chrome 95.0 on macOS 12.0",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+  }'
+
+# Track page view
+curl -X POST "$API_BASE/behavior/page-views" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "/feeds/personalized",
+    "referrer": "/dashboard",
+    "duration": 45000,
+    "session_id": "session_123456"
+  }'
+
+# Track user action
+curl -X POST "$API_BASE/behavior/actions" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "scroll",
+    "target": "feed_container",
+    "session_id": "session_123456",
+    "metadata": {
+      "scroll_position": 1200,
+      "scroll_depth": 75.5,
+      "viewport_height": 800
+    }
+  }'
+
+# Track content engagement
+curl -X POST "$API_BASE/behavior/content-engagement" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content_id": "post_id_here",
+    "content_type": "post",
+    "view_duration": 25000,
+    "scroll_depth": 90.0,
+    "source": "feed",
+    "interaction_type": "like",
+    "interaction_value": "heart"
+  }'
+
+# Get user behavior analytics
+curl -X GET "$API_BASE/behavior/analytics?time_range=week" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+# Get user content preferences
+curl -X GET "$API_BASE/behavior/preferences" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+# Get similar users
+curl -X GET "$API_BASE/behavior/similar-users?limit=5" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+# Get user interest score for content
+curl -X GET "$API_BASE/behavior/content/post_id_here/interest-score" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+# Get behavior insights
+curl -X GET "$API_BASE/behavior/insights?time_range=month" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+## Recommendation Tracking
+
+# Track recommendation performance
+curl -X POST "$API_BASE/behavior/recommendations" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recommendation_type": "content",
+    "item_id": "post_id_here",
+    "algorithm": "collaborative_filtering",
+    "score": 0.85,
+    "position": 2,
+    "action": "clicked"
+  }'
+
+# Track A/B testing experiment
+curl -X POST "$API_BASE/behavior/experiments" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "experiment_id": "feed_algorithm_test_v2",
+    "variant_id": "behavior_enhanced",
+    "event": "conversion",
+    "value": 1.0
+  }'
+
+# Record generic interaction
+curl -X POST "$API_BASE/behavior/interactions" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content_id": "post_id_here",
 Notes
 
 Replace placeholders: Replace your_access_token_here, user_id_here, post_id_here, etc. with actual values

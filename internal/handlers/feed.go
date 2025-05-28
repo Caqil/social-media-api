@@ -1,4 +1,4 @@
-// internal/handlers/feed.go - UPDATED VERSION WITH BEHAVIOR INTEGRATION
+// internal/handlers/feed.go - UPDATED VERSION WITH MISSING METHODS
 package handlers
 
 import (
@@ -14,23 +14,23 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// UPDATED FeedHandler struct with behavior service
+// FeedHandler struct with behavior service
 type FeedHandler struct {
 	feedService     *services.FeedService
-	behaviorService *services.UserBehaviorService // ADDED
+	behaviorService *services.UserBehaviorService
 	validator       *validator.Validate
 }
 
-// UPDATED constructor
+// Constructor
 func NewFeedHandler(feedService *services.FeedService, behaviorService *services.UserBehaviorService) *FeedHandler {
 	return &FeedHandler{
 		feedService:     feedService,
-		behaviorService: behaviorService, // ADDED
+		behaviorService: behaviorService,
 		validator:       validator.New(),
 	}
 }
 
-// UPDATED GetPersonalizedFeed with behavior option
+// GetPersonalizedFeed with behavior option
 func (h *FeedHandler) GetPersonalizedFeed(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
@@ -41,7 +41,7 @@ func (h *FeedHandler) GetPersonalizedFeed(c *gin.Context) {
 	// Get pagination parameters
 	params := utils.GetPaginationParams(c)
 
-	// Get algorithm parameter - NEW
+	// Get algorithm parameter
 	algorithm := c.DefaultQuery("algorithm", "standard") // behavior or standard
 	refresh := c.Query("refresh") == "true"
 
@@ -64,7 +64,7 @@ func (h *FeedHandler) GetPersonalizedFeed(c *gin.Context) {
 	totalCount := int64(len(feedItems))
 	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
 
-	// Add algorithm context to response - NEW
+	// Add algorithm context to response
 	response := gin.H{
 		"feed_type": "personalized",
 		"items":     feedItems,
@@ -78,7 +78,7 @@ func (h *FeedHandler) GetPersonalizedFeed(c *gin.Context) {
 	utils.PaginatedSuccessResponse(c, "Personalized feed retrieved successfully", response, paginationMeta, nil)
 }
 
-// UPDATED GetFollowingFeed with behavior enhancements
+// GetFollowingFeed with behavior enhancements
 func (h *FeedHandler) GetFollowingFeed(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
@@ -89,7 +89,7 @@ func (h *FeedHandler) GetFollowingFeed(c *gin.Context) {
 	// Get pagination parameters
 	params := utils.GetPaginationParams(c)
 
-	// Get algorithm parameter - NEW
+	// Get algorithm parameter
 	algorithm := c.DefaultQuery("algorithm", "standard")
 	refresh := c.Query("refresh") == "true"
 
@@ -123,12 +123,12 @@ func (h *FeedHandler) GetFollowingFeed(c *gin.Context) {
 	utils.PaginatedSuccessResponse(c, "Following feed retrieved successfully", response, paginationMeta, nil)
 }
 
-// UPDATED GetTrendingFeed with behavior personalization
+// GetTrendingFeed with behavior personalization
 func (h *FeedHandler) GetTrendingFeed(c *gin.Context) {
 	// Get pagination parameters
 	params := utils.GetPaginationParams(c)
 
-	// Get algorithm parameter - NEW
+	// Get algorithm parameter
 	algorithm := c.DefaultQuery("algorithm", "standard")
 	refresh := c.Query("refresh") == "true"
 
@@ -168,12 +168,12 @@ func (h *FeedHandler) GetTrendingFeed(c *gin.Context) {
 	utils.PaginatedSuccessResponse(c, "Trending feed retrieved successfully", response, paginationMeta, nil)
 }
 
-// UPDATED GetDiscoverFeed with intelligent discovery
+// GetDiscoverFeed with intelligent discovery
 func (h *FeedHandler) GetDiscoverFeed(c *gin.Context) {
 	// Get pagination parameters
 	params := utils.GetPaginationParams(c)
 
-	// Get algorithm parameter - NEW
+	// Get algorithm parameter
 	algorithm := c.DefaultQuery("algorithm", "standard")
 	refresh := c.Query("refresh") == "true"
 
@@ -213,7 +213,7 @@ func (h *FeedHandler) GetDiscoverFeed(c *gin.Context) {
 	utils.PaginatedSuccessResponse(c, "Discover feed retrieved successfully", response, paginationMeta, nil)
 }
 
-// UPDATED RecordInteraction with enhanced tracking
+// RecordInteraction with enhanced tracking
 func (h *FeedHandler) RecordInteraction(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
@@ -226,9 +226,9 @@ func (h *FeedHandler) RecordInteraction(c *gin.Context) {
 		InteractionType string  `json:"interaction_type" binding:"required"`
 		Source          string  `json:"source" binding:"required"`
 		TimeSpent       int64   `json:"time_spent"`
-		FeedPosition    int     `json:"feed_position"` // NEW
-		ScrollDepth     float64 `json:"scroll_depth"`  // NEW
-		ViewDuration    int64   `json:"view_duration"` // NEW
+		FeedPosition    int     `json:"feed_position"`
+		ScrollDepth     float64 `json:"scroll_depth"`
+		ViewDuration    int64   `json:"view_duration"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -267,7 +267,7 @@ func (h *FeedHandler) RecordInteraction(c *gin.Context) {
 		return
 	}
 
-	// Record enhanced behavior data if behavior service is available - NEW
+	// Record enhanced behavior data if behavior service is available
 	if h.behaviorService != nil {
 		engagement := models.ContentEngagement{
 			UserID:       userID.(primitive.ObjectID),
@@ -300,7 +300,7 @@ func (h *FeedHandler) RecordInteraction(c *gin.Context) {
 	})
 }
 
-// UPDATED GetFeedAnalytics with behavior insights
+// GetFeedAnalytics with behavior insights
 func (h *FeedHandler) GetFeedAnalytics(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
@@ -319,7 +319,7 @@ func (h *FeedHandler) GetFeedAnalytics(c *gin.Context) {
 		"time_range": timeRange,
 	}
 
-	// Get behavior analytics if available - NEW
+	// Get behavior analytics if available
 	if h.behaviorService != nil {
 		behaviorAnalytics, err := h.behaviorService.GetUserBehaviorAnalytics(userID.(primitive.ObjectID), timeRange)
 		if err == nil {
@@ -343,7 +343,7 @@ func (h *FeedHandler) GetFeedAnalytics(c *gin.Context) {
 		}
 	}
 
-	// Add feed-specific metrics - ENHANCED
+	// Add feed-specific metrics
 	analytics["feed_performance"] = gin.H{
 		"algorithm_type":     "hybrid",
 		"personalization":    h.behaviorService != nil,
@@ -367,7 +367,265 @@ func (h *FeedHandler) GetFeedAnalytics(c *gin.Context) {
 	utils.OkResponse(c, "Feed analytics retrieved successfully", analytics)
 }
 
-// NEW METHOD: Get behavior-enhanced feed
+// MISSING METHODS - Added here:
+
+// RefreshFeed forces refresh of user's feed
+func (h *FeedHandler) RefreshFeed(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	var req struct {
+		FeedType string `json:"feed_type" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequestResponse(c, "Invalid request format", err)
+		return
+	}
+
+	// Validate feed type
+	if !h.isValidFeedType(req.FeedType) {
+		utils.BadRequestResponse(c, "Invalid feed type", nil)
+		return
+	}
+
+	err := h.feedService.RefreshUserFeed(userID.(primitive.ObjectID), req.FeedType)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to refresh feed", err)
+		return
+	}
+
+	utils.OkResponse(c, "Feed refreshed successfully", gin.H{
+		"feed_type":    req.FeedType,
+		"refreshed_at": time.Now(),
+	})
+}
+
+// HidePost hides a post from user's feed
+func (h *FeedHandler) HidePost(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	postID := c.Param("post_id")
+	if postID == "" {
+		utils.BadRequestResponse(c, "Post ID is required", nil)
+		return
+	}
+
+	postObjectID, err := primitive.ObjectIDFromHex(postID)
+	if err != nil {
+		utils.BadRequestResponse(c, "Invalid post ID format", err)
+		return
+	}
+
+	var req struct {
+		Reason string `json:"reason,omitempty"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// It's optional, so we don't return an error
+		req.Reason = "user_choice"
+	}
+
+	// Record the hide action
+	if h.behaviorService != nil {
+		metadata := map[string]interface{}{
+			"action": "hide_post",
+			"reason": req.Reason,
+		}
+
+		go h.behaviorService.RecordInteraction(
+			userID.(primitive.ObjectID),
+			postObjectID,
+			"post",
+			"hide",
+			"feed",
+			metadata,
+		)
+	}
+
+	utils.OkResponse(c, "Post hidden successfully", gin.H{
+		"post_id":   postID,
+		"hidden_at": time.Now(),
+		"reason":    req.Reason,
+	})
+}
+
+// ReportFeedIssue reports issues with feed algorithm
+func (h *FeedHandler) ReportFeedIssue(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	var req struct {
+		IssueType   string `json:"issue_type" binding:"required"`
+		Description string `json:"description" binding:"required"`
+		FeedType    string `json:"feed_type" binding:"required"`
+		PostID      string `json:"post_id,omitempty"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequestResponse(c, "Invalid request format", err)
+		return
+	}
+
+	// Validate issue type
+	if !h.isValidIssueType(req.IssueType) {
+		utils.BadRequestResponse(c, "Invalid issue type", nil)
+		return
+	}
+
+	// Validate feed type
+	if !h.isValidFeedType(req.FeedType) {
+		utils.BadRequestResponse(c, "Invalid feed type", nil)
+		return
+	}
+
+	// Record the feedback
+	feedback := gin.H{
+		"user_id":     userID.(primitive.ObjectID).Hex(),
+		"issue_type":  req.IssueType,
+		"description": req.Description,
+		"feed_type":   req.FeedType,
+		"reported_at": time.Now(),
+	}
+
+	if req.PostID != "" {
+		feedback["post_id"] = req.PostID
+	}
+
+	// Here you would typically save to a feedback/issues collection
+	// For now, we'll just acknowledge the report
+
+	utils.OkResponse(c, "Feed issue reported successfully", gin.H{
+		"report_id":   primitive.NewObjectID().Hex(), // Generate a report ID
+		"issue_type":  req.IssueType,
+		"feed_type":   req.FeedType,
+		"reported_at": time.Now(),
+		"status":      "received",
+	})
+}
+
+// GetFeedPreferences gets user's feed preferences
+func (h *FeedHandler) GetFeedPreferences(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	// Default preferences - in real app, these would be fetched from database
+	preferences := gin.H{
+		"user_id": userID.(primitive.ObjectID).Hex(),
+		"feed_preferences": gin.H{
+			"algorithm_type":        "personalized", // chronological, personalized, hybrid
+			"show_liked_posts":      true,
+			"show_shared_posts":     true,
+			"show_reposted_content": true,
+			"show_promoted_content": false,
+			"content_type_weights": gin.H{
+				"text":  0.8,
+				"image": 1.0,
+				"video": 0.9,
+				"link":  0.7,
+			},
+			"source_preferences": gin.H{
+				"following":     1.0,
+				"suggested":     0.3,
+				"trending":      0.5,
+				"local_content": 0.4,
+			},
+		},
+		"notification_preferences": gin.H{
+			"new_followers_in_feed": true,
+			"trending_topics":       true,
+			"personalized_updates":  true,
+		},
+		"privacy_preferences": gin.H{
+			"allow_data_for_personalization": true,
+			"share_engagement_data":          false,
+		},
+		"updated_at": time.Now(),
+	}
+
+	utils.OkResponse(c, "Feed preferences retrieved successfully", preferences)
+}
+
+// UpdateFeedPreferences updates user's feed preferences
+func (h *FeedHandler) UpdateFeedPreferences(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	var req struct {
+		AlgorithmType        *string            `json:"algorithm_type,omitempty"`
+		ShowLikedPosts       *bool              `json:"show_liked_posts,omitempty"`
+		ShowSharedPosts      *bool              `json:"show_shared_posts,omitempty"`
+		ShowRepostedContent  *bool              `json:"show_reposted_content,omitempty"`
+		ShowPromotedContent  *bool              `json:"show_promoted_content,omitempty"`
+		ContentTypeWeights   map[string]float64 `json:"content_type_weights,omitempty"`
+		SourcePreferences    map[string]float64 `json:"source_preferences,omitempty"`
+		NotificationSettings map[string]bool    `json:"notification_settings,omitempty"`
+		PrivacySettings      map[string]bool    `json:"privacy_settings,omitempty"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequestResponse(c, "Invalid request format", err)
+		return
+	}
+
+	// Validate algorithm type if provided
+	if req.AlgorithmType != nil && !h.isValidAlgorithmType(*req.AlgorithmType) {
+		utils.BadRequestResponse(c, "Invalid algorithm type", nil)
+		return
+	}
+
+	// Here you would typically update the preferences in the database
+	// For now, we'll just return the updated preferences
+
+	updatedPreferences := gin.H{
+		"user_id": userID.(primitive.ObjectID).Hex(),
+		"updates": gin.H{},
+	}
+
+	if req.AlgorithmType != nil {
+		updatedPreferences["updates"].(gin.H)["algorithm_type"] = *req.AlgorithmType
+	}
+	if req.ShowLikedPosts != nil {
+		updatedPreferences["updates"].(gin.H)["show_liked_posts"] = *req.ShowLikedPosts
+	}
+	if req.ShowSharedPosts != nil {
+		updatedPreferences["updates"].(gin.H)["show_shared_posts"] = *req.ShowSharedPosts
+	}
+	if req.ShowRepostedContent != nil {
+		updatedPreferences["updates"].(gin.H)["show_reposted_content"] = *req.ShowRepostedContent
+	}
+	if req.ShowPromotedContent != nil {
+		updatedPreferences["updates"].(gin.H)["show_promoted_content"] = *req.ShowPromotedContent
+	}
+	if req.ContentTypeWeights != nil {
+		updatedPreferences["updates"].(gin.H)["content_type_weights"] = req.ContentTypeWeights
+	}
+	if req.SourcePreferences != nil {
+		updatedPreferences["updates"].(gin.H)["source_preferences"] = req.SourcePreferences
+	}
+
+	updatedPreferences["updated_at"] = time.Now()
+
+	utils.OkResponse(c, "Feed preferences updated successfully", updatedPreferences)
+}
+
+// Get behavior-enhanced feed
 func (h *FeedHandler) getBehaviorEnhancedFeed(userID primitive.ObjectID, feedType string, limit, skip int, refresh bool) ([]services.FeedItem, error) {
 	if h.behaviorService == nil {
 		// Fallback to standard feed if behavior service not available
@@ -401,18 +659,18 @@ func (h *FeedHandler) getBehaviorEnhancedFeed(userID primitive.ObjectID, feedTyp
 	return behaviorEnhancedFeed, nil
 }
 
-// NEW METHOD: Apply behavior enhancements to feed
+// Apply behavior enhancements to feed
 func (h *FeedHandler) applyBehaviorEnhancements(feedItems []services.FeedItem, userID primitive.ObjectID, userPrefs map[string]float64, similarUsers []primitive.ObjectID) []services.FeedItem {
 	// Enhance each feed item with behavior scoring
 	for i := range feedItems {
 		item := &feedItems[i]
 
-		// Get behavior score for this content
-		behaviorScore := h.calculateBehaviorScore(userID, item.Post.ID, item.Post.ContentType, item.Post.Hashtags)
+		// Get behavior score for this content - FIX: Convert ContentType to string
+		behaviorScore := h.calculateBehaviorScore(userID, item.Post.ID, string(item.Post.ContentType), item.Post.Hashtags)
 
 		// Apply content type preferences
 		if userPrefs != nil {
-			if prefScore, exists := userPrefs[item.Post.ContentType]; exists {
+			if prefScore, exists := userPrefs[string(item.Post.ContentType)]; exists {
 				behaviorScore += prefScore * 0.3 // 30% weight for content type preference
 			}
 		}
@@ -439,7 +697,7 @@ func (h *FeedHandler) applyBehaviorEnhancements(feedItems []services.FeedItem, u
 	return h.applyBehaviorDiversity(feedItems, userPrefs)
 }
 
-// NEW METHOD: Calculate behavior score for content
+// Calculate behavior score for content - FIX: Accept string contentType
 func (h *FeedHandler) calculateBehaviorScore(userID, contentID primitive.ObjectID, contentType string, hashtags []string) float64 {
 	if h.behaviorService == nil {
 		return 0.0
@@ -457,14 +715,14 @@ func (h *FeedHandler) calculateBehaviorScore(userID, contentID primitive.ObjectI
 	return interestScore + hashtagScore
 }
 
-// NEW METHOD: Apply behavior-based diversity
+// Apply behavior-based diversity
 func (h *FeedHandler) applyBehaviorDiversity(feedItems []services.FeedItem, userPrefs map[string]float64) []services.FeedItem {
 	contentTypeCount := make(map[string]int)
 	authorCount := make(map[primitive.ObjectID]int)
 	var diverseFeed []services.FeedItem
 
 	for _, item := range feedItems {
-		contentType := item.Post.ContentType
+		contentType := string(item.Post.ContentType) // FIX: Convert to string
 		authorID := item.Post.UserID
 
 		// Get max allowed per type based on user preferences
@@ -486,7 +744,7 @@ func (h *FeedHandler) applyBehaviorDiversity(feedItems []services.FeedItem, user
 	return diverseFeed
 }
 
-// NEW METHOD: Get user behavior insights
+// Get user behavior insights
 func (h *FeedHandler) GetBehaviorInsights(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
@@ -527,7 +785,7 @@ func (h *FeedHandler) GetBehaviorInsights(c *gin.Context) {
 	})
 }
 
-// NEW METHOD: Generate actionable insights
+// Generate actionable insights
 func (h *FeedHandler) generateBehaviorInsights(analytics map[string]interface{}, preferences map[string]float64) []map[string]interface{} {
 	var insights []map[string]interface{}
 
@@ -569,7 +827,7 @@ func (h *FeedHandler) generateBehaviorInsights(analytics map[string]interface{},
 	return insights
 }
 
-// Helper methods (keep existing ones and add new ones as needed)
+// Helper methods
 
 func (h *FeedHandler) isValidFeedType(feedType string) bool {
 	validTypes := []string{"home", "personal", "following", "trending", "discover"}
@@ -602,7 +860,7 @@ func (h *FeedHandler) isValidInteractionSource(source string) bool {
 }
 
 func (h *FeedHandler) isValidAlgorithmType(algorithmType string) bool {
-	validTypes := []string{"chronological", "personalized", "trending", "behavior"}
+	validTypes := []string{"chronological", "personalized", "trending", "behavior", "hybrid"}
 	for _, t := range validTypes {
 		if algorithmType == t {
 			return true
@@ -632,7 +890,7 @@ func (h *FeedHandler) isValidTimeRange(timeRange string) bool {
 }
 
 func (h *FeedHandler) isValidIssueType(issueType string) bool {
-	validTypes := []string{"inappropriate_content", "spam", "low_quality", "irrelevant", "bug", "other"}
+	validTypes := []string{"inappropriate_content", "spam", "low_quality", "irrelevant", "algorithm_issue", "performance", "bug", "other"}
 	for _, t := range validTypes {
 		if issueType == t {
 			return true
@@ -640,5 +898,3 @@ func (h *FeedHandler) isValidIssueType(issueType string) bool {
 	}
 	return false
 }
-
-// Keep all other existing methods unchanged (RefreshFeed, GetFeedPreferences, etc.)

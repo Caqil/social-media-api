@@ -215,7 +215,18 @@ type UserSearchResponse struct {
 	IsFollowing   bool   `json:"is_following,omitempty"`
 }
 
-// Methods for User model
+type UserStatus string
+
+const (
+	UserStatusActive     UserStatus = "active"
+	UserStatusInactive   UserStatus = "inactive"
+	UserStatusSuspended  UserStatus = "suspended"
+	UserStatusBanned     UserStatus = "banned"
+	UserStatusDeleted    UserStatus = "deleted"
+	UserStatusPending    UserStatus = "pending"
+	UserStatusRestricted UserStatus = "restricted"
+	UserStatusVerifying  UserStatus = "verifying"
+)
 
 // BeforeCreate sets default values before creating user
 func (u *User) BeforeCreate() {

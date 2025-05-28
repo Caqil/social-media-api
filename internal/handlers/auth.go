@@ -1,171 +1,354 @@
+// internal/handlers/auth.go
 package handlers
 
 import (
-	"context"
-	"net/http"
-	"social-media-api/config"
-	"social-media-api/models"
-	"social-media-api/utils"
-	"time"
+	"strings"
+
+	"social-media-api/internal/models"
+	"social-media-api/internal/services"
+	"social-media-api/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
-var validate = validator.New()
+type AuthHandler struct {
+	authService *services.AuthService
+	userService *services.UserService
+	validator   *validator.Validate
+}
 
-// RegisterUser handles user registration
-func RegisterUser(c *gin.Context) {
+func NewAuthHandler(authService *services.AuthService, userService *services.UserService) *AuthHandler {
+	return &AuthHandler{
+		authService: authService,
+		userService: userService,
+		validator:   validator.New(),
+	}
+}
+
+// Register handles user registration
+func (h *AuthHandler) Register(c *gin.Context) {
 	var req models.RegisterRequest
 
-	// Bind and validate JSON request
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "Invalid request format", err.Error())
+		utils.BadRequestResponse(c, "Invalid request format", err)
 		return
 	}
 
-	// Validate request data
-	if err := validate.Struct(req); err != nil {
+	if err := h.validator.Struct(req); err != nil {
 		utils.ValidationErrorResponse(c, err)
 		return
 	}
 
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// Get users collection
-	userCollection := config.DB.Collection("users")
-
-	// Check if username already exists
-	var existingUser models.User
-	err := userCollection.FindOne(ctx, bson.M{
-		"username":   req.Username,
-		"deleted_at": bson.M{"$exists": false},
-	}).Decode(&existingUser)
-	if err == nil {
-		utils.ErrorResponse(c, http.StatusConflict, "Username already exists", "")
-		return
-	} else if err != mongo.ErrNoDocuments {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "Database error", err.Error())
+	// Additional validation
+	if req.Password != req.ConfirmPassword {
+		utils.BadRequestResponse(c, "Passwords do not match", nil)
 		return
 	}
 
-	// Check if email already exists
-	err = userCollection.FindOne(ctx, bson.M{
-		"email":      req.Email,
-		"deleted_at": bson.M{"$exists": false},
-	}).Decode(&existingUser)
-	if err == nil {
-		utils.ErrorResponse(c, http.StatusConflict, "Email already exists", "")
-		return
-	} else if err != mongo.ErrNoDocuments {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "Database error", err.Error())
+	// Validate username format
+	if !utils.IsValidUsername(req.Username) {
+		utils.BadRequestResponse(c, "Invalid username format", nil)
 		return
 	}
 
-	// Hash password
-	hashedPassword, err := utils.HashPassword(req.Password)
+	// Register user
+	response, err := h.authService.Register(req)
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to process password", "")
+		if strings.Contains(err.Error(), "already exists") {
+			utils.ConflictResponse(c, err.Error(), err)
+			return
+		}
+		utils.InternalServerErrorResponse(c, "Failed to register user", err)
 		return
 	}
 
-	// Create new user
-	user := models.User{
-		Username:  req.Username,
-		Email:     req.Email,
-		Password:  hashedPassword,
-		FirstName: req.FirstName,
-		LastName:  req.LastName,
-		Bio:       req.Bio,
-	}
-
-	// Set default values
-	user.BeforeCreate()
-
-	// Insert user into database
-	result, err := userCollection.InsertOne(ctx, user)
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to create user", err.Error())
-		return
-	}
-
-	// Set the ID from the insert result
-	user.ID = result.InsertedID.(primitive.ObjectID)
-
-	// Return success response
-	utils.SuccessResponse(c, http.StatusCreated, "User registered successfully", user.ToUserResponse())
+	utils.CreatedResponse(c, "User registered successfully", response)
 }
 
-// GetUserProfile handles getting user profile by ID
-func GetUserProfile(c *gin.Context) {
-	userIDStr := c.Param("id")
+// Login handles user authentication
+func (h *AuthHandler) Login(c *gin.Context) {
+	var req models.LoginRequest
 
-	// Convert string ID to ObjectID
-	userID, err := primitive.ObjectIDFromHex(userIDStr)
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "Invalid user ID format", "")
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequestResponse(c, "Invalid request format", err)
 		return
 	}
 
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	if err := h.validator.Struct(req); err != nil {
+		utils.ValidationErrorResponse(c, err)
+		return
+	}
 
-	// Get users collection
-	userCollection := config.DB.Collection("users")
+	// Set device info and IP address
+	req.DeviceInfo = c.GetHeader("User-Agent")
+	if req.DeviceInfo == "" {
+		req.DeviceInfo = "Unknown Device"
+	}
 
-	// Find user by ID (excluding soft deleted users)
-	var user models.User
-	err = userCollection.FindOne(ctx, bson.M{
-		"_id":        userID,
-		"is_active":  true,
-		"deleted_at": bson.M{"$exists": false},
-	}).Decode(&user)
-
+	response, err := h.authService.Login(req)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			utils.ErrorResponse(c, http.StatusNotFound, "User not found", "")
-		} else {
-			utils.ErrorResponse(c, http.StatusInternalServerError, "Database error", err.Error())
+		if strings.Contains(err.Error(), "invalid credentials") {
+			utils.UnauthorizedResponse(c, "Invalid email/username or password")
+			return
 		}
+		if strings.Contains(err.Error(), "suspended") {
+			utils.ForbiddenResponse(c, "Account is suspended")
+			return
+		}
+		utils.InternalServerErrorResponse(c, "Login failed", err)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "User profile retrieved successfully", user.ToUserResponse())
+	utils.LoginSuccessResponse(c, response.User, gin.H{
+		"access_token":  response.AccessToken,
+		"refresh_token": response.RefreshToken,
+		"expires_in":    response.ExpiresIn,
+		"token_type":    response.TokenType,
+	})
 }
 
-// GetUserByUsername handles getting user profile by username
-func GetUserByUsername(c *gin.Context) {
-	username := c.Param("username")
+// RefreshToken handles token refresh
+func (h *AuthHandler) RefreshToken(c *gin.Context) {
+	var req struct {
+		RefreshToken string `json:"refresh_token" binding:"required"`
+	}
 
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// Get users collection
-	userCollection := config.DB.Collection("users")
-
-	// Find user by username (excluding soft deleted users)
-	var user models.User
-	err := userCollection.FindOne(ctx, bson.M{
-		"username":   username,
-		"is_active":  true,
-		"deleted_at": bson.M{"$exists": false},
-	}).Decode(&user)
-
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			utils.ErrorResponse(c, http.StatusNotFound, "User not found", "")
-		} else {
-			utils.ErrorResponse(c, http.StatusInternalServerError, "Database error", err.Error())
-		}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequestResponse(c, "Invalid request format", err)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "User profile retrieved successfully", user.ToUserResponse())
+	response, err := h.authService.RefreshTokens(req.RefreshToken)
+	if err != nil {
+		if strings.Contains(err.Error(), "invalid") || strings.Contains(err.Error(), "expired") {
+			utils.UnauthorizedResponse(c, "Invalid or expired refresh token")
+			return
+		}
+		utils.InternalServerErrorResponse(c, "Failed to refresh token", err)
+		return
+	}
+
+	utils.OkResponse(c, "Tokens refreshed successfully", response)
+}
+
+// Logout handles user logout
+func (h *AuthHandler) Logout(c *gin.Context) {
+	// Get session ID from context (set by auth middleware)
+	sessionID, exists := c.Get("session_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "No active session")
+		return
+	}
+
+	err := h.authService.Logout(sessionID.(string))
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to logout", err)
+		return
+	}
+
+	utils.LogoutSuccessResponse(c)
+}
+
+// LogoutAll handles logout from all devices
+func (h *AuthHandler) LogoutAll(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	err := h.authService.LogoutAll(userID.(primitive.ObjectID))
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to logout from all devices", err)
+		return
+	}
+
+	utils.OkResponse(c, "Logged out from all devices successfully", nil)
+}
+
+// ForgotPassword handles password reset request
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var req models.ForgotPasswordRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequestResponse(c, "Invalid request format", err)
+		return
+	}
+
+	if err := h.validator.Struct(req); err != nil {
+		utils.ValidationErrorResponse(c, err)
+		return
+	}
+
+	err := h.authService.ForgotPassword(req)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to process password reset", err)
+		return
+	}
+
+	utils.PasswordResetEmailSentResponse(c)
+}
+
+// ResetPassword handles password reset with token
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var req models.ResetPasswordRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequestResponse(c, "Invalid request format", err)
+		return
+	}
+
+	if err := h.validator.Struct(req); err != nil {
+		utils.ValidationErrorResponse(c, err)
+		return
+	}
+
+	err := h.authService.ResetPassword(req)
+	if err != nil {
+		if strings.Contains(err.Error(), "invalid") || strings.Contains(err.Error(), "expired") {
+			utils.BadRequestResponse(c, err.Error(), err)
+			return
+		}
+		if strings.Contains(err.Error(), "do not match") {
+			utils.BadRequestResponse(c, err.Error(), err)
+			return
+		}
+		utils.InternalServerErrorResponse(c, "Failed to reset password", err)
+		return
+	}
+
+	utils.OkResponse(c, "Password reset successfully", nil)
+}
+
+// VerifyEmail handles email verification
+func (h *AuthHandler) VerifyEmail(c *gin.Context) {
+	token := c.Query("token")
+	if token == "" {
+		utils.BadRequestResponse(c, "Verification token is required", nil)
+		return
+	}
+
+	err := h.authService.VerifyEmail(token)
+	if err != nil {
+		if strings.Contains(err.Error(), "invalid") {
+			utils.BadRequestResponse(c, "Invalid verification token", err)
+			return
+		}
+		utils.InternalServerErrorResponse(c, "Failed to verify email", err)
+		return
+	}
+
+	utils.EmailVerificationSuccessResponse(c)
+}
+
+// GetProfile returns current user profile
+func (h *AuthHandler) GetProfile(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	user, err := h.userService.GetUserByID(userID.(primitive.ObjectID))
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to get user profile", err)
+		return
+	}
+
+	utils.OkResponse(c, "Profile retrieved successfully", user.ToUserResponse())
+}
+
+// UpdateProfile updates user profile
+func (h *AuthHandler) UpdateProfile(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	var req models.UpdateProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequestResponse(c, "Invalid request format", err)
+		return
+	}
+
+	user, err := h.userService.UpdateUser(userID.(primitive.ObjectID), req)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to update profile", err)
+		return
+	}
+
+	utils.ProfileUpdateSuccessResponse(c, user.ToUserResponse())
+}
+
+// ChangePassword handles password change
+func (h *AuthHandler) ChangePassword(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	var req models.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequestResponse(c, "Invalid request format", err)
+		return
+	}
+
+	if err := h.validator.Struct(req); err != nil {
+		utils.ValidationErrorResponse(c, err)
+		return
+	}
+
+	err := h.userService.ChangePassword(userID.(primitive.ObjectID), req)
+	if err != nil {
+		if strings.Contains(err.Error(), "incorrect") {
+			utils.BadRequestResponse(c, err.Error(), err)
+			return
+		}
+		if strings.Contains(err.Error(), "do not match") {
+			utils.BadRequestResponse(c, err.Error(), err)
+			return
+		}
+		utils.InternalServerErrorResponse(c, "Failed to change password", err)
+		return
+	}
+
+	utils.PasswordChangeSuccessResponse(c)
+}
+
+// GetSessions returns user's active sessions
+func (h *AuthHandler) GetSessions(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	sessions, err := h.authService.GetUserSessions(userID.(primitive.ObjectID))
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to get sessions", err)
+		return
+	}
+
+	utils.OkResponse(c, "Sessions retrieved successfully", sessions)
+}
+
+// RevokeSession revokes a specific session
+func (h *AuthHandler) RevokeSession(c *gin.Context) {
+	sessionID := c.Param("sessionId")
+	if sessionID == "" {
+		utils.BadRequestResponse(c, "Session ID is required", nil)
+		return
+	}
+
+	err := h.authService.RevokeSession(sessionID)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to revoke session", err)
+		return
+	}
+
+	utils.OkResponse(c, "Session revoked successfully", nil)
 }

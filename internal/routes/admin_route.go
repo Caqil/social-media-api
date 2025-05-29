@@ -11,10 +11,10 @@ import (
 func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler) {
 	// Admin routes group with authentication and authorization middleware
 	admin := router.Group("/api/admin")
-	admin.Use(middleware.AuthMiddleware())      // Verify JWT token
-	admin.Use(middleware.AdminMiddleware())     // Verify admin role
-	admin.Use(middleware.RateLimitMiddleware()) // Rate limiting
-	admin.Use(middleware.LoggingMiddleware())   // Request logging
+	admin.Use(middleware.AuthMiddleware())    // Verify JWT token
+	admin.Use(middleware.AdminMiddleware())   // Verify admin role
+	admin.Use(middleware.RateLimit())         // Rate limiting
+	admin.Use(middleware.LoggingMiddleware()) // Request logging
 
 	// Dashboard
 	admin.GET("/dashboard", adminHandler.GetDashboard)
@@ -248,223 +248,223 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler) {
 		config.PUT("/rate-limits", adminHandler.UpdateRateLimits)
 	}
 
-	// Security Management
-	security := admin.Group("/security")
-	{
-		security.GET("/blocked-ips", adminHandler.GetBlockedIPs)
-		security.POST("/blocked-ips", adminHandler.BlockIP)
-		security.DELETE("/blocked-ips/:ip", adminHandler.UnblockIP)
+	// // Security Management
+	// security := admin.Group("/security")
+	// {
+	// 	security.GET("/blocked-ips", adminHandler.GetBlockedIPs)
+	// 	security.POST("/blocked-ips", adminHandler.BlockIP)
+	// 	security.DELETE("/blocked-ips/:ip", adminHandler.UnblockIP)
 
-		security.GET("/suspicious-activities", adminHandler.GetSuspiciousActivities)
-		security.GET("/login-attempts", adminHandler.GetLoginAttempts)
-		security.GET("/security-events", adminHandler.GetSecurityEvents)
+	// 	security.GET("/suspicious-activities", adminHandler.GetSuspiciousActivities)
+	// 	security.GET("/login-attempts", adminHandler.GetLoginAttempts)
+	// 	security.GET("/security-events", adminHandler.GetSecurityEvents)
 
-		// API keys and tokens
-		security.GET("/api-keys", adminHandler.GetAPIKeys)
-		security.POST("/api-keys", adminHandler.CreateAPIKey)
-		security.DELETE("/api-keys/:id", adminHandler.DeleteAPIKey)
-		security.PUT("/api-keys/:id/regenerate", adminHandler.RegenerateAPIKey)
+	// 	// API keys and tokens
+	// 	security.GET("/api-keys", adminHandler.GetAPIKeys)
+	// 	security.POST("/api-keys", adminHandler.CreateAPIKey)
+	// 	security.DELETE("/api-keys/:id", adminHandler.DeleteAPIKey)
+	// 	security.PUT("/api-keys/:id/regenerate", adminHandler.RegenerateAPIKey)
 
-		// Two-factor authentication
-		security.GET("/2fa/stats", adminHandler.Get2FAStats)
-		security.POST("/2fa/reset", adminHandler.Reset2FA)
-	}
+	// 	// Two-factor authentication
+	// 	security.GET("/2fa/stats", adminHandler.Get2FAStats)
+	// 	security.POST("/2fa/reset", adminHandler.Reset2FA)
+	// }
 
-	// Admin User Management
-	admins := admin.Group("/admins")
-	{
-		admins.GET("", adminHandler.GetAllAdmins)
-		admins.GET("/:id", adminHandler.GetAdmin)
-		admins.POST("", adminHandler.CreateAdmin)
-		admins.PUT("/:id", adminHandler.UpdateAdmin)
-		admins.PUT("/:id/role", adminHandler.UpdateAdminRole)
-		admins.PUT("/:id/permissions", adminHandler.UpdateAdminPermissions)
-		admins.DELETE("/:id", adminHandler.DeleteAdmin)
+	// // Admin User Management
+	// admins := admin.Group("/admins")
+	// {
+	// 	admins.GET("", adminHandler.GetAllAdmins)
+	// 	admins.GET("/:id", adminHandler.GetAdmin)
+	// 	admins.POST("", adminHandler.CreateAdmin)
+	// 	admins.PUT("/:id", adminHandler.UpdateAdmin)
+	// 	admins.PUT("/:id/role", adminHandler.UpdateAdminRole)
+	// 	admins.PUT("/:id/permissions", adminHandler.UpdateAdminPermissions)
+	// 	admins.DELETE("/:id", adminHandler.DeleteAdmin)
 
-		// Admin activities
-		admins.GET("/activities", adminHandler.GetAdminActivities)
-		admins.GET("/:id/activities", adminHandler.GetAdminActivitiesByAdmin)
-	}
+	// 	// Admin activities
+	// 	admins.GET("/activities", adminHandler.GetAdminActivities)
+	// 	admins.GET("/:id/activities", adminHandler.GetAdminActivitiesByAdmin)
+	// }
 
-	// Audit and Logging
-	audit := admin.Group("/audit")
-	{
-		audit.GET("/logs", adminHandler.GetAuditLogs)
-		audit.GET("/logs/:id", adminHandler.GetAuditLog)
-		audit.GET("/trail", adminHandler.GetAuditTrail)
-		audit.POST("/logs/export", adminHandler.ExportAuditLogs)
+	// // Audit and Logging
+	// audit := admin.Group("/audit")
+	// {
+	// 	audit.GET("/logs", adminHandler.GetAuditLogs)
+	// 	audit.GET("/logs/:id", adminHandler.GetAuditLog)
+	// 	audit.GET("/trail", adminHandler.GetAuditTrail)
+	// 	audit.POST("/logs/export", adminHandler.ExportAuditLogs)
 
-		// User activities
-		audit.GET("/users/:id/activities", adminHandler.GetUserActivities)
-		audit.GET("/content/:type/:id/history", adminHandler.GetContentHistory)
-	}
+	// 	// User activities
+	// 	audit.GET("/users/:id/activities", adminHandler.GetUserActivities)
+	// 	audit.GET("/content/:type/:id/history", adminHandler.GetContentHistory)
+	// }
 
-	// Moderation Tools
-	moderation := admin.Group("/moderation")
-	{
-		moderation.GET("/queue", adminHandler.GetModerationQueue)
-		moderation.GET("/queue/priority", adminHandler.GetPriorityModerationQueue)
-		moderation.POST("/content/:id/approve", adminHandler.ApproveContent)
-		moderation.POST("/content/:id/reject", adminHandler.RejectContent)
-		moderation.POST("/content/:id/flag", adminHandler.FlagContent)
+	// // Moderation Tools
+	// moderation := admin.Group("/moderation")
+	// {
+	// 	moderation.GET("/queue", adminHandler.GetModerationQueue)
+	// 	moderation.GET("/queue/priority", adminHandler.GetPriorityModerationQueue)
+	// 	moderation.POST("/content/:id/approve", adminHandler.ApproveContent)
+	// 	moderation.POST("/content/:id/reject", adminHandler.RejectContent)
+	// 	moderation.POST("/content/:id/flag", adminHandler.FlagContent)
 
-		// AI moderation
-		moderation.GET("/ai/stats", adminHandler.GetAIModerationStats)
-		moderation.POST("/ai/retrain", adminHandler.RetrainAIModeration)
-		moderation.GET("/ai/confidence", adminHandler.GetAIModerationConfidence)
+	// 	// AI moderation
+	// 	moderation.GET("/ai/stats", adminHandler.GetAIModerationStats)
+	// 	moderation.POST("/ai/retrain", adminHandler.RetrainAIModeration)
+	// 	moderation.GET("/ai/confidence", adminHandler.GetAIModerationConfidence)
 
-		// Moderation rules
-		moderation.GET("/rules", adminHandler.GetModerationRules)
-		moderation.POST("/rules", adminHandler.CreateModerationRule)
-		moderation.PUT("/rules/:id", adminHandler.UpdateModerationRule)
-		moderation.DELETE("/rules/:id", adminHandler.DeleteModerationRule)
-	}
+	// 	// Moderation rules
+	// 	moderation.GET("/rules", adminHandler.GetModerationRules)
+	// 	moderation.POST("/rules", adminHandler.CreateModerationRule)
+	// 	moderation.PUT("/rules/:id", adminHandler.UpdateModerationRule)
+	// 	moderation.DELETE("/rules/:id", adminHandler.DeleteModerationRule)
+	// }
 
-	// Communication Tools
-	communication := admin.Group("/communication")
-	{
-		// Email management
-		communication.GET("/emails", adminHandler.GetEmailCampaigns)
-		communication.POST("/emails/send", adminHandler.SendEmail)
-		communication.POST("/emails/broadcast", adminHandler.BroadcastEmail)
-		communication.GET("/emails/templates", adminHandler.GetEmailTemplates)
-		communication.POST("/emails/templates", adminHandler.CreateEmailTemplate)
+	// // Communication Tools
+	// communication := admin.Group("/communication")
+	// {
+	// 	// Email management
+	// 	communication.GET("/emails", adminHandler.GetEmailCampaigns)
+	// 	communication.POST("/emails/send", adminHandler.SendEmail)
+	// 	communication.POST("/emails/broadcast", adminHandler.BroadcastEmail)
+	// 	communication.GET("/emails/templates", adminHandler.GetEmailTemplates)
+	// 	communication.POST("/emails/templates", adminHandler.CreateEmailTemplate)
 
-		// Push notifications
-		communication.GET("/push/stats", adminHandler.GetPushNotificationStats)
-		communication.POST("/push/send", adminHandler.SendPushNotification)
-		communication.POST("/push/broadcast", adminHandler.BroadcastPushNotification)
+	// 	// Push notifications
+	// 	communication.GET("/push/stats", adminHandler.GetPushNotificationStats)
+	// 	communication.POST("/push/send", adminHandler.SendPushNotification)
+	// 	communication.POST("/push/broadcast", adminHandler.BroadcastPushNotification)
 
-		// Announcements
-		communication.GET("/announcements", adminHandler.GetAnnouncements)
-		communication.POST("/announcements", adminHandler.CreateAnnouncement)
-		communication.PUT("/announcements/:id", adminHandler.UpdateAnnouncement)
-		communication.DELETE("/announcements/:id", adminHandler.DeleteAnnouncement)
-	}
+	// 	// Announcements
+	// 	communication.GET("/announcements", adminHandler.GetAnnouncements)
+	// 	communication.POST("/announcements", adminHandler.CreateAnnouncement)
+	// 	communication.PUT("/announcements/:id", adminHandler.UpdateAnnouncement)
+	// 	communication.DELETE("/announcements/:id", adminHandler.DeleteAnnouncement)
+	// }
 
-	// Integration Management
-	integrations := admin.Group("/integrations")
-	{
-		integrations.GET("", adminHandler.GetIntegrations)
-		integrations.GET("/:id", adminHandler.GetIntegration)
-		integrations.POST("", adminHandler.CreateIntegration)
-		integrations.PUT("/:id", adminHandler.UpdateIntegration)
-		integrations.DELETE("/:id", adminHandler.DeleteIntegration)
-		integrations.POST("/:id/test", adminHandler.TestIntegration)
+	// // Integration Management
+	// integrations := admin.Group("/integrations")
+	// {
+	// 	integrations.GET("", adminHandler.GetIntegrations)
+	// 	integrations.GET("/:id", adminHandler.GetIntegration)
+	// 	integrations.POST("", adminHandler.CreateIntegration)
+	// 	integrations.PUT("/:id", adminHandler.UpdateIntegration)
+	// 	integrations.DELETE("/:id", adminHandler.DeleteIntegration)
+	// 	integrations.POST("/:id/test", adminHandler.TestIntegration)
 
-		// Webhooks
-		integrations.GET("/webhooks", adminHandler.GetWebhooks)
-		integrations.POST("/webhooks", adminHandler.CreateWebhook)
-		integrations.PUT("/webhooks/:id", adminHandler.UpdateWebhook)
-		integrations.DELETE("/webhooks/:id", adminHandler.DeleteWebhook)
-		integrations.POST("/webhooks/:id/test", adminHandler.TestWebhook)
-	}
+	// 	// Webhooks
+	// 	integrations.GET("/webhooks", adminHandler.GetWebhooks)
+	// 	integrations.POST("/webhooks", adminHandler.CreateWebhook)
+	// 	integrations.PUT("/webhooks/:id", adminHandler.UpdateWebhook)
+	// 	integrations.DELETE("/webhooks/:id", adminHandler.DeleteWebhook)
+	// 	integrations.POST("/webhooks/:id/test", adminHandler.TestWebhook)
+	// }
 
-	// Business Intelligence
-	bi := admin.Group("/business-intelligence")
-	{
-		bi.GET("/kpis", adminHandler.GetKPIs)
-		bi.GET("/metrics", adminHandler.GetBusinessMetrics)
-		bi.GET("/forecasts", adminHandler.GetForecasts)
-		bi.GET("/trends", adminHandler.GetTrends)
-		bi.GET("/cohorts", adminHandler.GetCohortAnalysis)
-		bi.GET("/funnel", adminHandler.GetFunnelAnalysis)
-		bi.GET("/retention", adminHandler.GetRetentionAnalysis)
+	// // Business Intelligence
+	// bi := admin.Group("/business-intelligence")
+	// {
+	// 	bi.GET("/kpis", adminHandler.GetKPIs)
+	// 	bi.GET("/metrics", adminHandler.GetBusinessMetrics)
+	// 	bi.GET("/forecasts", adminHandler.GetForecasts)
+	// 	bi.GET("/trends", adminHandler.GetTrends)
+	// 	bi.GET("/cohorts", adminHandler.GetCohortAnalysis)
+	// 	bi.GET("/funnel", adminHandler.GetFunnelAnalysis)
+	// 	bi.GET("/retention", adminHandler.GetRetentionAnalysis)
 
-		// Custom dashboards
-		bi.GET("/dashboards", adminHandler.GetCustomDashboards)
-		bi.POST("/dashboards", adminHandler.CreateCustomDashboard)
-		bi.PUT("/dashboards/:id", adminHandler.UpdateCustomDashboard)
-		bi.DELETE("/dashboards/:id", adminHandler.DeleteCustomDashboard)
-	}
+	// 	// Custom dashboards
+	// 	bi.GET("/dashboards", adminHandler.GetCustomDashboards)
+	// 	bi.POST("/dashboards", adminHandler.CreateCustomDashboard)
+	// 	bi.PUT("/dashboards/:id", adminHandler.UpdateCustomDashboard)
+	// 	bi.DELETE("/dashboards/:id", adminHandler.DeleteCustomDashboard)
+	// }
 
-	// Content Management
-	content := admin.Group("/content")
-	{
-		// Content categories
-		content.GET("/categories", adminHandler.GetContentCategories)
-		content.POST("/categories", adminHandler.CreateContentCategory)
-		content.PUT("/categories/:id", adminHandler.UpdateContentCategory)
-		content.DELETE("/categories/:id", adminHandler.DeleteContentCategory)
+	// // Content Management
+	// content := admin.Group("/content")
+	// {
+	// 	// Content categories
+	// 	content.GET("/categories", adminHandler.GetContentCategories)
+	// 	content.POST("/categories", adminHandler.CreateContentCategory)
+	// 	content.PUT("/categories/:id", adminHandler.UpdateContentCategory)
+	// 	content.DELETE("/categories/:id", adminHandler.DeleteContentCategory)
 
-		// Content moderation
-		content.GET("/moderation/pending", adminHandler.GetPendingContent)
-		content.POST("/moderation/batch", adminHandler.BatchModerateContent)
-		content.GET("/moderation/history", adminHandler.GetModerationHistory)
+	// 	// Content moderation
+	// 	content.GET("/moderation/pending", adminHandler.GetPendingContent)
+	// 	content.POST("/moderation/batch", adminHandler.BatchModerateContent)
+	// 	content.GET("/moderation/history", adminHandler.GetModerationHistory)
 
-		// Content performance
-		content.GET("/performance", adminHandler.GetContentPerformance)
-		content.GET("/viral", adminHandler.GetViralContent)
-		content.GET("/trending", adminHandler.getTrendingContent)
-	}
+	// 	// Content performance
+	// 	content.GET("/performance", adminHandler.GetContentPerformance)
+	// 	content.GET("/viral", adminHandler.GetViralContent)
+	// 	content.GET("/trending", adminHandler.getTrendingContent)
+	// }
 
-	// Data Management
-	data := admin.Group("/data")
-	{
-		// Import/Export
-		data.POST("/import", adminHandler.ImportData)
-		data.GET("/export/status/:id", adminHandler.GetExportStatus)
-		data.GET("/export/download/:id", adminHandler.DownloadExport)
+	// // Data Management
+	// data := admin.Group("/data")
+	// {
+	// 	// Import/Export
+	// 	data.POST("/import", adminHandler.ImportData)
+	// 	data.GET("/export/status/:id", adminHandler.GetExportStatus)
+	// 	data.GET("/export/download/:id", adminHandler.DownloadExport)
 
-		// Data quality
-		data.GET("/quality/report", adminHandler.GetDataQualityReport)
-		data.POST("/quality/fix", adminHandler.FixDataQuality)
-		data.GET("/duplicates", adminHandler.GetDuplicateData)
-		data.POST("/duplicates/merge", adminHandler.MergeDuplicateData)
+	// 	// Data quality
+	// 	data.GET("/quality/report", adminHandler.GetDataQualityReport)
+	// 	data.POST("/quality/fix", adminHandler.FixDataQuality)
+	// 	data.GET("/duplicates", adminHandler.GetDuplicateData)
+	// 	data.POST("/duplicates/merge", adminHandler.MergeDuplicateData)
 
-		// Data retention
-		data.GET("/retention/policies", adminHandler.GetDataRetentionPolicies)
-		data.POST("/retention/policies", adminHandler.CreateDataRetentionPolicy)
-		data.PUT("/retention/policies/:id", adminHandler.UpdateDataRetentionPolicy)
-		data.POST("/retention/execute", adminHandler.ExecuteDataRetention)
-	}
+	// 	// Data retention
+	// 	data.GET("/retention/policies", adminHandler.GetDataRetentionPolicies)
+	// 	data.POST("/retention/policies", adminHandler.CreateDataRetentionPolicy)
+	// 	data.PUT("/retention/policies/:id", adminHandler.UpdateDataRetentionPolicy)
+	// 	data.POST("/retention/execute", adminHandler.ExecuteDataRetention)
+	// }
 
-	// API Management
-	api := admin.Group("/api-management")
-	{
-		api.GET("/endpoints", adminHandler.GetAPIEndpoints)
-		api.GET("/usage", adminHandler.GetAPIUsage)
-		api.GET("/performance", adminHandler.GetAPIPerformance)
-		api.GET("/errors", adminHandler.GetAPIErrors)
-		api.GET("/rate-limits/usage", adminHandler.GetRateLimitUsage)
+	// // API Management
+	// api := admin.Group("/api-management")
+	// {
+	// 	api.GET("/endpoints", adminHandler.GetAPIEndpoints)
+	// 	api.GET("/usage", adminHandler.GetAPIUsage)
+	// 	api.GET("/performance", adminHandler.GetAPIPerformance)
+	// 	api.GET("/errors", adminHandler.GetAPIErrors)
+	// 	api.GET("/rate-limits/usage", adminHandler.GetRateLimitUsage)
 
-		// API documentation
-		api.GET("/documentation", adminHandler.GetAPIDocumentation)
-		api.PUT("/documentation", adminHandler.UpdateAPIDocumentation)
+	// 	// API documentation
+	// 	api.GET("/documentation", adminHandler.GetAPIDocumentation)
+	// 	api.PUT("/documentation", adminHandler.UpdateAPIDocumentation)
 
-		// API versions
-		api.GET("/versions", adminHandler.GetAPIVersions)
-		api.POST("/versions", adminHandler.CreateAPIVersion)
-		api.PUT("/versions/:version/deprecate", adminHandler.DeprecateAPIVersion)
-	}
+	// 	// API versions
+	// 	api.GET("/versions", adminHandler.GetAPIVersions)
+	// 	api.POST("/versions", adminHandler.CreateAPIVersion)
+	// 	api.PUT("/versions/:version/deprecate", adminHandler.DeprecateAPIVersion)
+	// }
 
-	// Testing and Development
-	dev := admin.Group("/development")
-	{
-		dev.GET("/sandbox", adminHandler.GetSandboxEnvironment)
-		dev.POST("/sandbox/reset", adminHandler.ResetSandboxEnvironment)
-		dev.GET("/test-data", adminHandler.GetTestData)
-		dev.POST("/test-data/generate", adminHandler.GenerateTestData)
-		dev.POST("/test-data/cleanup", adminHandler.CleanupTestData)
+	// // Testing and Development
+	// dev := admin.Group("/development")
+	// {
+	// 	dev.GET("/sandbox", adminHandler.GetSandboxEnvironment)
+	// 	dev.POST("/sandbox/reset", adminHandler.ResetSandboxEnvironment)
+	// 	dev.GET("/test-data", adminHandler.GetTestData)
+	// 	dev.POST("/test-data/generate", adminHandler.GenerateTestData)
+	// 	dev.POST("/test-data/cleanup", adminHandler.CleanupTestData)
 
-		// Feature testing
-		dev.GET("/ab-tests", adminHandler.GetABTests)
-		dev.POST("/ab-tests", adminHandler.CreateABTest)
-		dev.PUT("/ab-tests/:id", adminHandler.UpdateABTest)
-		dev.POST("/ab-tests/:id/start", adminHandler.StartABTest)
-		dev.POST("/ab-tests/:id/stop", adminHandler.StopABTest)
-		dev.GET("/ab-tests/:id/results", adminHandler.GetABTestResults)
-	}
+	// 	// Feature testing
+	// 	dev.GET("/ab-tests", adminHandler.GetABTests)
+	// 	dev.POST("/ab-tests", adminHandler.CreateABTest)
+	// 	dev.PUT("/ab-tests/:id", adminHandler.UpdateABTest)
+	// 	dev.POST("/ab-tests/:id/start", adminHandler.StartABTest)
+	// 	dev.POST("/ab-tests/:id/stop", adminHandler.StopABTest)
+	// 	dev.GET("/ab-tests/:id/results", adminHandler.GetABTestResults)
+	// }
 
-	// Help and Documentation
-	help := admin.Group("/help")
-	{
-		help.GET("/docs", adminHandler.GetDocumentation)
-		help.GET("/faq", adminHandler.GetFAQ)
-		help.GET("/tutorials", adminHandler.GetTutorials)
-		help.GET("/support", adminHandler.GetSupportInfo)
-		help.POST("/feedback", adminHandler.SubmitFeedback)
-	}
+	// // Help and Documentation
+	// help := admin.Group("/help")
+	// {
+	// 	help.GET("/docs", adminHandler.GetDocumentation)
+	// 	help.GET("/faq", adminHandler.GetFAQ)
+	// 	help.GET("/tutorials", adminHandler.GetTutorials)
+	// 	help.GET("/support", adminHandler.GetSupportInfo)
+	// 	help.POST("/feedback", adminHandler.SubmitFeedback)
+	// }
 }
 
 // Additional middleware that might be needed

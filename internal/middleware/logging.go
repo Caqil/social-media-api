@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -162,53 +161,6 @@ func DetailedLogger() gin.HandlerFunc {
 	})
 }
 
-// APILogger creates an API-specific logger with custom formatting
-func APILogger() gin.HandlerFunc {
-	return gin.HandlerFunc(func(c *gin.Context) {
-		start := time.Now()
-
-		// Skip logging for health checks and static files
-		if shouldSkipLogging(c.Request.URL.Path) {
-			c.Next()
-			return
-		}
-
-		c.Next()
-
-		// Create structured log
-		duration := time.Since(start)
-
-		logData := map[string]interface{}{
-			"timestamp":     start.Format(time.RFC3339),
-			"method":        c.Request.Method,
-			"path":          c.Request.URL.Path,
-			"status":        c.Writer.Status(),
-			"duration_ms":   duration.Milliseconds(),
-			"client_ip":     c.ClientIP(),
-			"user_agent":    c.Request.UserAgent(),
-			"response_size": c.Writer.Size(),
-		}
-
-		// Add user context if available
-		if userID, exists := c.Get("user_id"); exists {
-			logData["user_id"] = userID
-		}
-
-		// Add request ID if available
-		if requestID := c.GetHeader("X-Request-ID"); requestID != "" {
-			logData["request_id"] = requestID
-		}
-
-		// Add error information if present
-		if len(c.Errors) > 0 {
-			logData["errors"] = c.Errors.String()
-		}
-
-		// Convert to JSON and log
-		jsonData, _ := json.Marshal(logData)
-		log.Printf("API_LOG: %s", string(jsonData))
-	})
-}
 
 // DatabaseLogger logs database operations
 func DatabaseLogger() gin.HandlerFunc {
@@ -326,23 +278,6 @@ func logResponseDetails(c *gin.Context, start time.Time) {
 		duration,
 		c.Writer.Size(),
 	)
-}
-
-func shouldSkipLogging(path string) bool {
-	skipPaths := []string{
-		"/health",
-		"/metrics",
-		"/favicon.ico",
-		"/static/",
-	}
-
-	for _, skipPath := range skipPaths {
-		if strings.HasPrefix(path, skipPath) {
-			return true
-		}
-	}
-
-	return false
 }
 
 func logDatabaseOperations(c *gin.Context, operations interface{}) {

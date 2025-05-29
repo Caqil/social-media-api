@@ -5262,30 +5262,36 @@ func (h *AdminHandler) UpdateRateLimits(c *gin.Context) {
 }
 
 // Helper functions
+// Helper functions
 func (h *AdminHandler) createPaginationLinks(c *gin.Context, pagination *utils.PaginationMeta) *utils.PaginationLinks {
 	baseURL := c.Request.URL.Path
 	query := c.Request.URL.Query()
 
-	var nextURL, prevURL *string
+	links := &utils.PaginationLinks{
+		Self: baseURL + "?" + query.Encode(),
+	}
 
 	if pagination.HasNext {
-		query.Set("page", strconv.Itoa(pagination.Page+1))
-		next := baseURL + "?" + query.Encode()
-		nextURL = &next
+		query.Set("page", strconv.Itoa(pagination.CurrentPage+1))
+		links.Next = baseURL + "?" + query.Encode()
 	}
 
 	if pagination.HasPrevious {
-		query.Set("page", strconv.Itoa(pagination.Page-1))
-		prev := baseURL + "?" + query.Encode()
-		prevURL = &prev
+		query.Set("page", strconv.Itoa(pagination.CurrentPage-1))
+		links.Previous = baseURL + "?" + query.Encode()
 	}
 
-	return &utils.PaginationLinks{
-		Next:     nextURL,
-		Previous: prevURL,
+	// Add first and last page links
+	if pagination.TotalPages > 0 {
+		query.Set("page", "1")
+		links.First = baseURL + "?" + query.Encode()
+
+		query.Set("page", strconv.Itoa(pagination.TotalPages))
+		links.Last = baseURL + "?" + query.Encode()
 	}
+
+	return links
 }
-
 func (h *AdminHandler) logAdminActivity(c *gin.Context, activityType, description string) {
 	adminIDValue, exists := c.Get("user_id")
 	if !exists {

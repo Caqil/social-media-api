@@ -842,3 +842,6 @@ func convertPollOptions(reqOptions []models.CreatePollOption) []models.PollOptio
 	}
 	return options
 }
+func (us *PostService) GetCollection() *mongo.Collection {
+    return us.collection
+}

@@ -854,3 +854,6 @@ func (rs *ReportService) notifyReporter(reporterID, reportID primitive.ObjectID,
 	// This would integrate with notification service
 	// Implementation depends on notification system
 }
+func (us *ReportService) GetCollection() *mongo.Collection {
+	return us.collection
+}

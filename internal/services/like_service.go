@@ -740,3 +740,6 @@ func (ls *LikeService) sendLikeNotification(userID, targetID primitive.ObjectID,
 	// This would integrate with notification service
 	// Implementation depends on notification system requirements
 }
+func (us *LikeService) GetCollection() *mongo.Collection {
+	return us.collection
+}

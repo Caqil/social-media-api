@@ -902,3 +902,6 @@ func (cs *CommentService) updateCommentVoteScore(commentID primitive.ObjectID) {
 		},
 	})
 }
+func (us *CommentService) GetCollection() *mongo.Collection {
+	return us.collection
+}

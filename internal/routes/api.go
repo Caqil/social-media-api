@@ -16,7 +16,6 @@ import (
 type APIRouter struct {
 	// Handlers
 	AuthHandler         *handlers.AuthHandler
-	AdminHandler        *handlers.AdminHandler
 	UserHandler         *handlers.UserHandler
 	PostHandler         *handlers.PostHandler
 	CommentHandler      *handlers.CommentHandler
@@ -94,7 +93,6 @@ func SetupRoutes(router *gin.Engine, apiRouter *APIRouter) {
 	SetupSocialRoutes(router, apiRouter.FeedHandler, apiRouter.SearchHandler, apiRouter.LikeHandler, apiRouter.AuthMiddleware)
 	SetupNotificationRoutes(router, apiRouter.NotificationHandler, apiRouter.AuthMiddleware)
 	SetupMediaRoutes(router, apiRouter.MediaHandler, apiRouter.AuthMiddleware)
-	SetupAdminRoutes(router, apiRouter.AdminHandler, apiRouter.AuthMiddleware)
 
 	// 404 handler
 	router.NoRoute(middleware.NotFoundHandler())

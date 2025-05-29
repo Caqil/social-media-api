@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"social-media-api/internal/config"
@@ -291,7 +292,15 @@ Sample User Credentials:
 Ready to test your Social Media API! 🚀
 `, len(generator.users), len(generator.posts), duration.Round(time.Second))
 }
+func generateUniqueUsername(index int) string {
+	baseUsername := strings.ToLower(gofakeit.Username())
+	randomSuffix := rand.Intn(999999)
+	return fmt.Sprintf("%s%d", baseUsername, randomSuffix)
+}
 
+func generateUniqueEmail(username string) string {
+	return fmt.Sprintf("%s@example.com", username)
+}
 func (g *DataGenerator) cleanExistingData(ctx context.Context) error {
 	collections := []string{
 		"users", "posts", "comments", "likes", "follows", "stories",
@@ -331,7 +340,7 @@ func (g *DataGenerator) generateUsers(ctx context.Context, genConfig GenerationC
 	return nil
 }
 func (g *DataGenerator) createRandomUser(index int) models.User {
-	// Call HashPassword and handle both return values
+	uniqueUsername := generateUniqueUsername(index)
 	hashedPassword, err := utils.HashPassword("password123")
 	if err != nil {
 		// Handle the error appropriately (e.g., log or panic for data generation)
@@ -343,7 +352,7 @@ func (g *DataGenerator) createRandomUser(index int) models.User {
 			ID:        primitive.NewObjectID(),
 			CreatedAt: gofakeit.DateRange(time.Now().AddDate(-2, 0, 0), time.Now()),
 		},
-		Username:             fmt.Sprintf("user%d", index),
+		Username:             uniqueUsername,
 		Email:                fmt.Sprintf("user%d@example.com", index),
 		Password:             hashedPassword, // Use the hashed password
 		FirstName:            gofakeit.FirstName(),
@@ -423,7 +432,6 @@ func (g *DataGenerator) generatePosts(ctx context.Context, genConfig GenerationC
 
 	return nil
 }
-
 func (g *DataGenerator) createRandomPost(user models.User) models.Post {
 	contentTypes := []models.ContentType{
 		models.ContentTypeText,
@@ -458,15 +466,15 @@ func (g *DataGenerator) createRandomPost(user models.User) models.Post {
 		post.Media = generateMediaInfo(contentType)
 	}
 
-	// Add location sometimes
-	if rand.Float64() < 0.3 {
-		post.Location = &models.Location{
-			Name:      gofakeit.City(),
-			Address:   gofakeit.Address().Address,
-			Latitude:  gofakeit.Latitude(),
-			Longitude: gofakeit.Longitude(),
-		}
-	}
+	// COMMENT OUT LOCATION FOR NOW TO AVOID GEOJSON ISSUES
+	// if rand.Float64() < 0.3 {
+	//     post.Location = &models.Location{
+	//         Name:      gofakeit.City(),
+	//         Address:   gofakeit.Address().Address,
+	//         Latitude:  gofakeit.Latitude(),
+	//         Longitude: gofakeit.Longitude(),
+	//     }
+	// }
 
 	post.BeforeCreate()
 	post.UpdatedAt = post.CreatedAt

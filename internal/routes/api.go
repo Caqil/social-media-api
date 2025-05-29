@@ -41,7 +41,6 @@ type APIRouter struct {
 // Services holds all service instances
 type Services struct {
 	AuthService         *services.AuthService
-	AdminService        *services.AdminService
 	UserService         *services.UserService
 	PostService         *services.PostService
 	CommentService      *services.CommentService

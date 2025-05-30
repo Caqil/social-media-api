@@ -139,6 +139,7 @@ export interface BaseEntity {
   }
   
   export interface UserResponse {
+    is_suspended: boolean
     id: string
     username: string
     email: string

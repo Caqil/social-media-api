@@ -42,7 +42,7 @@ export default function AdminLoginPage() {
     try {
       await login(email, password);
       router.push("/admin/dashboard");
-    } catch (error: any) {
+    } catch (error) {
       setError(error.message || "Login failed. Please try again.");
       setIsErrorDialogOpen(true);
     } finally {

@@ -1,4 +1,4 @@
-// lib/api-client.ts - Complete Implementation
+// lib/api-client.ts - Complete Implementation with Fixed Routes
 import { DashboardStats } from '@/types/admin'
 import axios, { AxiosInstance, AxiosResponse } from 'axios'
 
@@ -37,7 +37,7 @@ class ApiClient {
 
   constructor() {
     this.client = axios.create({
-      baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api',
+      baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080',
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
@@ -117,7 +117,8 @@ class ApiClient {
               throw new Error('No refresh token available')
             }
 
-            const response = await this.client.post('/admin/auth/refresh', {
+            // Use the correct public refresh endpoint with full path
+            const response = await this.client.post('/api/v1/admin/public/auth/refresh', {
               refresh_token: refreshToken
             })
 
@@ -214,7 +215,7 @@ class ApiClient {
   async adminLogin(email: string, password: string) {
     console.log('🔄 Attempting admin login...')
     try {
-      const response = await this.client.post('/admin/auth/login', {
+      const response = await this.client.post('/api/v1/admin/public/auth/login', {
         email,
         password,
       })
@@ -229,7 +230,7 @@ class ApiClient {
   async adminLogout() {
     console.log('🔄 Attempting admin logout...')
     try {
-      const response = await this.client.post('/admin/auth/logout')
+      const response = await this.client.post('/api/v1/admin/public/auth/logout')
       console.log('✅ Logout API call successful')
       return response.data
     } catch (error) {
@@ -246,7 +247,7 @@ class ApiClient {
     
     console.log('🔄 Refreshing token...')
     try {
-      const response = await this.client.post('/admin/auth/refresh', {
+      const response = await this.client.post('/api/v1/admin/public/auth/refresh', {
         refresh_token: refreshToken,
       })
       console.log('✅ Token refresh successful')
@@ -258,11 +259,11 @@ class ApiClient {
   }
 
   async adminForgotPassword(email: string) {
-    return this.post('/admin/auth/forgot-password', { email })
+    return this.post('/api/v1/admin/public/auth/forgot-password', { email })
   }
 
   async adminResetPassword(token: string, newPassword: string) {
-    return this.post('/admin/auth/reset-password', { 
+    return this.post('/api/v1/admin/public/auth/reset-password', { 
       token, 
       new_password: newPassword 
     })
@@ -271,197 +272,195 @@ class ApiClient {
   // ==================== DASHBOARD ====================
   async getDashboardStats() {
     console.log('🔄 Fetching dashboard stats...')
-    return this.get<DashboardStats>('/admin/dashboard/stats')
+    return this.get<DashboardStats>('/api/v1/admin/dashboard/stats')
   }
 
   // ==================== USER MANAGEMENT ====================
   async getUsers(params?: any) {
-    return this.get<PaginatedResponse>('/admin/users', params)
+    return this.get<PaginatedResponse>('/api/v1/admin/users', params)
   }
 
-
   async getUser(id: string) {
-    return this.get(`/admin/users/${id}`)
+    return this.get(`/api/v1/admin/users/${id}`)
   }
 
   async getUserStats(id: string) {
-    return this.get(`/admin/users/${id}/stats`)
+    return this.get(`/api/v1/admin/users/${id}/stats`)
   }
 
   async updateUserStatus(id: string, data: { is_active: boolean; is_suspended: boolean; reason?: string }) {
-    return this.put(`/admin/users/${id}/status`, data)
+    return this.put(`/api/v1/admin/users/${id}/status`, data)
   }
 
   async verifyUser(id: string) {
-    return this.put(`/admin/users/${id}/verify`)
+    return this.put(`/api/v1/admin/users/${id}/verify`)
   }
 
   async deleteUser(id: string, reason: string) {
-    return this.delete(`/admin/users/${id}`, { reason })
+    return this.delete(`/api/v1/admin/users/${id}`, { reason })
   }
 
   async bulkUserAction(data: { user_ids: string[]; action: string; reason?: string }) {
-    return this.post('/admin/users/bulk/actions', data)
+    return this.post('/api/v1/admin/users/bulk/actions', data)
   }
 
   async exportUsers(params?: any) {
-    return this.get('/admin/users/export', params)
+    return this.get('/api/v1/admin/users/export', params)
   }
 
   // ==================== POST MANAGEMENT ====================
   async getPosts(params?: any) {
-    return this.get<PaginatedResponse>('/admin/posts', params)
+    return this.get<PaginatedResponse>('/api/v1/admin/posts', params)
   }
 
-
   async getPost(id: string) {
-    return this.get(`/admin/posts/${id}`)
+    return this.get(`/api/v1/admin/posts/${id}`)
   }
 
   async getPostStats(id: string) {
-    return this.get(`/admin/posts/${id}/stats`)
+    return this.get(`/api/v1/admin/posts/${id}/stats`)
   }
 
   async hidePost(id: string, reason: string) {
-    return this.put(`/admin/posts/${id}/hide`, { reason })
+    return this.put(`/api/v1/admin/posts/${id}/hide`, { reason })
   }
 
   async deletePost(id: string, reason: string) {
-    return this.delete(`/admin/posts/${id}`, { reason })
+    return this.delete(`/api/v1/admin/posts/${id}`, { reason })
   }
 
   async bulkPostAction(data: { post_ids: string[]; action: string; reason?: string }) {
-    return this.post('/admin/posts/bulk/actions', data)
+    return this.post('/api/v1/admin/posts/bulk/actions', data)
   }
 
   async exportPosts(params?: any) {
-    return this.get('/admin/posts/export', params)
+    return this.get('/api/v1/admin/posts/export', params)
   }
 
   // ==================== COMMENT MANAGEMENT ====================
   async getComments(params?: any) {
-    return this.get<PaginatedResponse>('/admin/comments', params)
+    return this.get<PaginatedResponse>('/api/v1/admin/comments', params)
   }
 
   async getComment(id: string) {
-    return this.get(`/admin/comments/${id}`)
+    return this.get(`/api/v1/admin/comments/${id}`)
   }
 
   async hideComment(id: string, reason: string) {
-    return this.put(`/admin/comments/${id}/hide`, { reason })
+    return this.put(`/api/v1/admin/comments/${id}/hide`, { reason })
   }
 
   async deleteComment(id: string, reason: string) {
-    return this.delete(`/admin/comments/${id}`, { reason })
+    return this.delete(`/api/v1/admin/comments/${id}`, { reason })
   }
 
   async bulkCommentAction(data: { comment_ids: string[]; action: string; reason?: string }) {
-    return this.post('/admin/comments/bulk/actions', data)
+    return this.post('/api/v1/admin/comments/bulk/actions', data)
   }
 
   // ==================== GROUP MANAGEMENT ====================
   async getGroups(params?: any) {
-    return this.get<PaginatedResponse>('/admin/groups', params)
+    return this.get<PaginatedResponse>('/api/v1/admin/groups', params)
   }
 
   async getGroup(id: string) {
-    return this.get<any>(`/admin/groups/${id}`)
+    return this.get<any>(`/api/v1/admin/groups/${id}`)
   }
 
   async getGroupMembers(id: string, params?: any) {
-    return this.get<PaginatedResponse>(`/admin/groups/${id}/members`, params)
+    return this.get<PaginatedResponse>(`/api/v1/admin/groups/${id}/members`, params)
   }
 
   async updateGroupStatus(id: string, data: { is_active: boolean; reason?: string }) {
-    return this.put(`/admin/groups/${id}/status`, data)
+    return this.put(`/api/v1/admin/groups/${id}/status`, data)
   }
 
   async deleteGroup(id: string, reason: string) {
-    return this.delete(`/admin/groups/${id}`, { reason })
+    return this.delete(`/api/v1/admin/groups/${id}`, { reason })
   }
 
   async bulkGroupAction(data: { group_ids: string[]; action: string; reason?: string }) {
-    return this.post('/admin/groups/bulk/actions', data)
+    return this.post('/api/v1/admin/groups/bulk/actions', data)
   }
 
   // ==================== EVENT MANAGEMENT ====================
   async getEvents(params?: any) {
-    return this.get<PaginatedResponse>('/admin/events', params)
+    return this.get<PaginatedResponse>('/api/v1/admin/events', params)
   }
 
   async getEvent(id: string) {
-    return this.get(`/admin/events/${id}`)
+    return this.get(`/api/v1/admin/events/${id}`)
   }
 
   async getEventAttendees(id: string, params?: any) {
-    return this.get<PaginatedResponse>(`/admin/events/${id}/attendees`, params)
+    return this.get<PaginatedResponse>(`/api/v1/admin/events/${id}/attendees`, params)
   }
 
   async updateEventStatus(id: string, data: { status: string; reason?: string }) {
-    return this.put(`/admin/events/${id}/status`, data)
+    return this.put(`/api/v1/admin/events/${id}/status`, data)
   }
 
   async deleteEvent(id: string, reason: string) {
-    return this.delete(`/admin/events/${id}`, { reason })
+    return this.delete(`/api/v1/admin/events/${id}`, { reason })
   }
 
   async bulkEventAction(data: { event_ids: string[]; action: string; reason?: string }) {
-    return this.post('/admin/events/bulk/actions', data)
+    return this.post('/api/v1/admin/events/bulk/actions', data)
   }
 
   // ==================== STORY MANAGEMENT ====================
   async getStories(params?: any) {
-    return this.get<PaginatedResponse>('/admin/stories', params)
+    return this.get<PaginatedResponse>('/api/v1/admin/stories', params)
   }
 
   async getStory(id: string) {
-    return this.get(`/admin/stories/${id}`)
+    return this.get(`/api/v1/admin/stories/${id}`)
   }
 
   async hideStory(id: string, reason: string) {
-    return this.put(`/admin/stories/${id}/hide`, { reason })
+    return this.put(`/api/v1/admin/stories/${id}/hide`, { reason })
   }
 
   async deleteStory(id: string, reason: string) {
-    return this.delete(`/admin/stories/${id}`, { reason })
+    return this.delete(`/api/v1/admin/stories/${id}`, { reason })
   }
 
   async bulkStoryAction(data: { story_ids: string[]; action: string; reason?: string }) {
-    return this.post('/admin/stories/bulk/actions', data)
+    return this.post('/api/v1/admin/stories/bulk/actions', data)
   }
 
   // ==================== MESSAGE MANAGEMENT ====================
   async getMessages(params?: any) {
-    return this.get<PaginatedResponse>('/admin/messages', params)
+    return this.get<PaginatedResponse>('/api/v1/admin/messages', params)
   }
 
   async getMessage(id: string) {
-    return this.get(`/admin/messages/${id}`)
+    return this.get(`/api/v1/admin/messages/${id}`)
   }
 
   async getConversations(params?: any) {
-    return this.get<PaginatedResponse>('/admin/messages/conversations', params)
+    return this.get<PaginatedResponse>('/api/v1/admin/messages/conversations', params)
   }
 
   async getConversation(id: string) {
-    return this.get(`/admin/messages/conversations/${id}`)
+    return this.get(`/api/v1/admin/messages/conversations/${id}`)
   }
 
   async deleteMessage(id: string, reason: string) {
-    return this.delete(`/admin/messages/${id}`, { reason })
+    return this.delete(`/api/v1/admin/messages/${id}`, { reason })
   }
 
   async bulkMessageAction(data: { message_ids: string[]; action: string; reason?: string }) {
-    return this.post('/admin/messages/bulk/actions', data)
+    return this.post('/api/v1/admin/messages/bulk/actions', data)
   }
 
   // ==================== REPORT MANAGEMENT ====================
   async getReports(params?: any) {
-    return this.get<PaginatedResponse>('/admin/reports', params)
+    return this.get<PaginatedResponse>('/api/v1/admin/reports', params)
   }
 
   async getReport(id: string) {
-    return this.get(`/admin/reports/${id}`)
+    return this.get(`/api/v1/admin/reports/${id}`)
   }
 
   async updateReportStatus(id: string, data: {
@@ -469,31 +468,31 @@ class ApiClient {
     resolution?: string
     note?: string
   }) {
-    return this.put(`/admin/reports/${id}/status`, data)
+    return this.put(`/api/v1/admin/reports/${id}/status`, data)
   }
 
   async assignReport(id: string, assigneeId: string) {
-    return this.put(`/admin/reports/${id}/assign`, { assignee_id: assigneeId })
+    return this.put(`/api/v1/admin/reports/${id}/assign`, { assignee_id: assigneeId })
   }
 
   async resolveReport(id: string, data: { resolution: string; note?: string }) {
-    return this.post(`/admin/reports/${id}/resolve`, data)
+    return this.post(`/api/v1/admin/reports/${id}/resolve`, data)
   }
 
   async rejectReport(id: string, data: { reason: string }) {
-    return this.post(`/admin/reports/${id}/reject`, data)
+    return this.post(`/api/v1/admin/reports/${id}/reject`, data)
   }
 
   async bulkReportAction(data: { report_ids: string[]; action: string; reason?: string }) {
-    return this.post('/admin/reports/bulk/actions', data)
+    return this.post('/api/v1/admin/reports/bulk/actions', data)
   }
 
   async getReportStats() {
-    return this.get('/admin/reports/stats')
+    return this.get('/api/v1/admin/reports/stats')
   }
 
   async getReportSummary() {
-    return this.get('/admin/reports/stats/summary')
+    return this.get('/api/v1/admin/reports/stats/summary')
   }
 
   // ==================== FOLLOW MANAGEMENT ====================
@@ -656,27 +655,27 @@ class ApiClient {
 
   // ==================== ANALYTICS ====================
   async getUserAnalytics(period: string = '30d') {
-    return this.get('/admin/analytics/users', { period })
+    return this.get('/api/v1/admin/analytics/users', { period })
   }
 
   async getContentAnalytics(period: string = '30d') {
-    return this.get('/admin/analytics/content', { period })
+    return this.get('/api/v1/admin/analytics/content', { period })
   }
 
   async getEngagementAnalytics(period: string = '30d') {
-    return this.get('/admin/analytics/engagement', { period })
+    return this.get('/api/v1/admin/analytics/engagement', { period })
   }
 
   async getGrowthAnalytics(period: string = '30d') {
-    return this.get('/admin/analytics/growth', { period })
+    return this.get('/api/v1/admin/analytics/growth', { period })
   }
 
   async getDemographicAnalytics() {
-    return this.get('/admin/analytics/demographics')
+    return this.get('/api/v1/admin/analytics/demographics')
   }
 
   async getRevenueAnalytics(period: string = '30d') {
-    return this.get('/admin/analytics/revenue', { period })
+    return this.get('/api/v1/admin/analytics/revenue', { period })
   }
 
   async getCustomReport(data: {
@@ -685,130 +684,130 @@ class ApiClient {
     end_date: string
     filters?: any
   }) {
-    return this.post('/admin/analytics/reports/custom', data)
+    return this.post('/api/v1/admin/analytics/reports/custom', data)
   }
 
   async getRealtimeAnalytics() {
-    return this.get('/admin/analytics/realtime')
+    return this.get('/api/v1/admin/analytics/realtime')
   }
 
   async getLiveStats() {
-    return this.get('/admin/analytics/live-stats')
+    return this.get('/api/v1/admin/analytics/live-stats')
   }
 
   // ==================== SYSTEM MANAGEMENT ====================
   async getSystemHealth() {
-    return this.get('/admin/system/health')
+    return this.get('/api/v1/admin/system/health')
   }
 
   async getSystemInfo() {
-    return this.get('/admin/system/info')
+    return this.get('/api/v1/admin/system/info')
   }
 
   async getSystemLogs(params?: any) {
-    return this.get<any>('/admin/system/logs', params)
+    return this.get<any>('/api/v1/admin/system/logs', params)
   }
 
   async getPerformanceMetrics() {
-    return this.get('/admin/system/performance')
+    return this.get('/api/v1/admin/system/performance')
   }
 
   async getDatabaseStats() {
-    return this.get('/admin/system/database/stats')
+    return this.get('/api/v1/admin/system/database/stats')
   }
 
   async getCacheStats() {
-    return this.get('/admin/system/cache/stats')
+    return this.get('/api/v1/admin/system/cache/stats')
   }
 
   // Super Admin only operations
   async clearCache(cacheType?: string) {
-    return this.post('/admin/system/cache/clear', { cache_type: cacheType })
+    return this.post('/api/v1/admin/system/cache/clear', { cache_type: cacheType })
   }
 
   async warmCache(cacheType?: string) {
-    return this.post('/admin/system/cache/warm', { cache_type: cacheType })
+    return this.post('/api/v1/admin/system/cache/warm', { cache_type: cacheType })
   }
 
   async enableMaintenanceMode(data: { message?: string; duration?: string }) {
-    return this.post('/admin/system/maintenance/enable', data)
+    return this.post('/api/v1/admin/system/maintenance/enable', data)
   }
 
   async disableMaintenanceMode() {
-    return this.post('/admin/system/maintenance/disable')
+    return this.post('/api/v1/admin/system/maintenance/disable')
   }
 
   async backupDatabase(data: { backup_type?: string; collections?: string[] }) {
-    return this.post('/admin/system/database/backup', data)
+    return this.post('/api/v1/admin/system/database/backup', data)
   }
 
   async getDatabaseBackups() {
-    return this.get<any>('/admin/system/database/backups')
+    return this.get<any>('/api/v1/admin/system/database/backups')
   }
 
   async restoreDatabase(data: { backup_id: string; restore_type?: string; collections?: string[] }) {
-    return this.post('/admin/system/database/restore', data)
+    return this.post('/api/v1/admin/system/database/restore', data)
   }
 
   async optimizeDatabase() {
-    return this.post('/admin/system/database/optimize')
+    return this.post('/api/v1/admin/system/database/optimize')
   }
 
   // ==================== CONFIGURATION MANAGEMENT ====================
   async getConfiguration() {
-    return this.get('/admin/config')
+    return this.get('/api/v1/admin/config')
   }
 
   async updateConfiguration(data: any) {
-    return this.put('/admin/config', data)
+    return this.put('/api/v1/admin/config', data)
   }
 
   async getConfigurationHistory(params?: any) {
-    return this.get('/admin/config/history', params)
+    return this.get('/api/v1/admin/config/history', params)
   }
 
   async rollbackConfiguration(configId: string) {
-    return this.post('/admin/config/rollback', { config_id: configId })
+    return this.post('/api/v1/admin/config/rollback', { config_id: configId })
   }
 
   async validateConfiguration(data: any) {
-    return this.post('/admin/config/validate', data)
+    return this.post('/api/v1/admin/config/validate', data)
   }
 
   async getFeatureFlags() {
-    return this.get('/admin/config/features')
+    return this.get('/api/v1/admin/config/features')
   }
 
   async updateFeatureFlags(data: any) {
-    return this.put('/admin/config/features', data)
+    return this.put('/api/v1/admin/config/features', data)
   }
 
   async toggleFeature(feature: string, enabled: boolean) {
-    return this.put(`/admin/config/features/${feature}/toggle`, { enabled })
+    return this.put(`/api/v1/admin/config/features/${feature}/toggle`, { enabled })
   }
 
   async getRateLimits() {
-    return this.get('/admin/config/rate-limits')
+    return this.get('/api/v1/admin/config/rate-limits')
   }
 
   async updateRateLimits(data: any) {
-    return this.put('/admin/config/rate-limits', data)
+    return this.put('/api/v1/admin/config/rate-limits', data)
   }
 
   // ==================== PUBLIC ADMIN ROUTES ====================
   async getPublicSystemStatus() {
-    return this.get('/admin/public/status')
+    return this.get('/api/v1/admin/public/status')
   }
 
   async getPublicHealthCheck() {
-    return this.get('/admin/public/health')
+    return this.get('/api/v1/admin/public/health')
   }
 
   // ==================== WEBSOCKET CONNECTIONS ====================
   connectWebSocket(endpoint: string, onMessage?: (data: any) => void): WebSocket | null {
     try {
       const token = localStorage.getItem('admin_token')
-      const wsUrl = `${process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080'}/api/admin/ws/${endpoint}`
+      const wsUrl = `${process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080'}/api/v1/admin/ws/${endpoint}`
       
       const ws = new WebSocket(wsUrl, ['Authorization', `Bearer ${token}`])
       
@@ -900,11 +899,11 @@ class ApiClient {
     ip_address: string
     user_agent: string
   }) {
-    return this.post('/admin/behavior/sessions/start', data)
+    return this.post('/v1/behavior/sessions/start', data)
   }
 
   async endUserSession(data: { session_id: string }) {
-    return this.post('/admin/behavior/sessions/end', data)
+    return this.post('/v1/behavior/sessions/end', data)
   }
 
   async recordPageVisit(data: {
@@ -916,7 +915,7 @@ class ApiClient {
     scroll_depth: number
     interactions: number
   }) {
-    return this.post('/admin/behavior/page-visit', data)
+    return this.post('/v1/behavior/page-visit', data)
   }
 
   async recordUserAction(data: {
@@ -925,7 +924,7 @@ class ApiClient {
     target: string
     metadata?: any
   }) {
-    return this.post('/admin/behavior/action', data)
+    return this.post('/v1/behavior/action', data)
   }
 
   async recordContentEngagement(data: {
@@ -937,32 +936,32 @@ class ApiClient {
     device_type: string
     interactions: any[]
   }) {
-    return this.post('/admin/behavior/engagement', data)
+    return this.post('/v1/behavior/engagement', data)
   }
 
   async getUserBehaviorAnalytics(timeRange: string = 'week') {
-    return this.get('/admin/behavior/analytics', { time_range: timeRange })
+    return this.get('/v1/behavior/analytics', { time_range: timeRange })
   }
 
   async getSimilarUsers(limit: number = 10) {
-    return this.get('/admin/behavior/similar-users', { limit })
+    return this.get('/v1/behavior/similar-users', { limit })
   }
 
   // Reaction/Like Service
   async getLikesForTarget(targetType: string, targetId: string, params?: any) {
-    return this.get(`/admin/likes/target/${targetType}/${targetId}`, params)
+    return this.get(`/v1/likes/target/${targetType}/${targetId}`, params)
   }
 
   async getReactionSummary(targetType: string, targetId: string) {
-    return this.get(`/admin/likes/target/${targetType}/${targetId}/summary`)
+    return this.get(`/v1/likes/target/${targetType}/${targetId}/summary`)
   }
 
   async getDetailedReactionStats(targetType: string, targetId: string) {
-    return this.get(`/admin/likes/target/${targetType}/${targetId}/detailed-stats`)
+    return this.get(`/v1/likes/target/${targetType}/${targetId}/detailed-stats`)
   }
 
   async getTrendingReactions(params?: any) {
-    return this.get('/admin/likes/trending', params)
+    return this.get('/v1/likes/trending', params)
   }
 
   async createLike(data: {
@@ -970,44 +969,44 @@ class ApiClient {
     target_type: string
     reaction_type: string
   }) {
-    return this.post('/admin/likes', data)
+    return this.post('/v1/likes', data)
   }
 
   async updateLike(id: string, data: { reaction_type: string }) {
-    return this.put(`/admin/likes/${id}`, data)
+    return this.put(`/v1/likes/${id}`, data)
   }
 
   async checkUserReaction(targetType: string, targetId: string) {
-    return this.get(`/admin/likes/check/${targetType}/${targetId}`)
+    return this.get(`/v1/likes/check/${targetType}/${targetId}`)
   }
 
   async getUserLikes(userId: string, params?: any) {
-    return this.get(`/admin/likes/user/${userId}`, params)
+    return this.get(`/v1/likes/user/${userId}`, params)
   }
 
   // Email Service (Internal)
   async sendWelcomeEmail(data: { user_id: string; verification_token: string }) {
-    return this.post('/admin/internal/email/welcome', data)
+    return this.post('/v1/internal/email/welcome', data)
   }
 
   async sendEmailVerification(data: { user_id: string; verification_token: string }) {
-    return this.post('/admin/internal/email/verify', data)
+    return this.post('/v1/internal/email/verify', data)
   }
 
   async sendPasswordResetEmail(data: { user_id: string; reset_token: string }) {
-    return this.post('/admin/internal/email/password-reset', data)
+    return this.post('/v1/internal/email/password-reset', data)
   }
 
   async sendPasswordChangedEmail(data: { user_id: string }) {
-    return this.post('/admin/internal/email/password-changed', data)
+    return this.post('/v1/internal/email/password-changed', data)
   }
 
   async sendNotificationEmail(data: { notification_id: string }) {
-    return this.post('/admin/internal/email/notification', data)
+    return this.post('/v1/internal/email/notification', data)
   }
 
   async sendAccountSuspensionEmail(data: { user_id: string; reason: string }) {
-    return this.post('/admin/internal/email/account-suspended', data)
+    return this.post('/v1/internal/email/account-suspended', data)
   }
 
   async sendSecurityAlertEmail(data: {
@@ -1015,7 +1014,7 @@ class ApiClient {
     alert_type: string
     details: string
   }) {
-    return this.post('/admin/internal/email/security-alert', data)
+    return this.post('/v1/internal/email/security-alert', data)
   }
 
   // Advanced Analytics
@@ -1057,7 +1056,7 @@ class ApiClient {
 
   // Search Service
   async generalSearch(query: string, params?: any) {
-    return this.get('/admin/search', { query, ...params })
+    return this.get('/v1/search', { query, ...params })
   }
 
   async advancedSearch(params: {
@@ -1071,27 +1070,27 @@ class ApiClient {
     limit?: number
     skip?: number
   }) {
-    return this.get('/admin/search', params)
+    return this.get('/v1/search', params)
   }
 
   async searchPosts(query: string, params?: any) {
-    return this.get('/admin/search/posts', { query, ...params })
+    return this.get('/v1/search/posts', { query, ...params })
   }
 
   async searchUsers(query: string, params?: any) {
-    return this.get('/admin/search/users', { query, ...params })
+    return this.get('/v1/search/users', { query, ...params })
   }
 
   async searchHashtags(query: string, limit: number = 10) {
-    return this.get('/admin/search/hashtags', { query, limit })
+    return this.get('/v1/search/hashtags', { query, limit })
   }
 
   async getSearchSuggestions(query: string) {
-    return this.get('/admin/search/suggestions', { query })
+    return this.get('/v1/search/suggestions', { query })
   }
 
   async updateHashtagInfo(data: { hashtag: string; post_id: string }) {
-    return this.post('/admin/internal/search/hashtag', data)
+    return this.post('/v1/internal/search/hashtag', data)
   }
 
   async indexContent(data: {
@@ -1107,7 +1106,7 @@ class ApiClient {
     location?: string
     popularity_score?: number
   }) {
-    return this.post('/admin/internal/search/index', data)
+    return this.post('/v1/internal/search/index', data)
   }
 
   async createSearchIndexes() {
@@ -1120,19 +1119,19 @@ class ApiClient {
     platform: string
     device_info: string
   }) {
-    return this.post('/admin/push/register', data)
+    return this.post('/v1/push/register', data)
   }
 
   async removePushToken(data: { token: string }) {
-    return this.delete('/admin/push/token', data)
+    return this.delete('/v1/push/token', data)
   }
 
   async getUserPushTokens() {
-    return this.get('/admin/push/tokens')
+    return this.get('/v1/push/tokens')
   }
 
   async sendTestNotification(data: { title: string; body: string }) {
-    return this.post('/admin/push/test', data)
+    return this.post('/v1/push/test', data)
   }
 
   async sendBulkPushNotification(data: {

@@ -19,7 +19,8 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, d
 	adminMiddleware := middleware.NewAdminMiddleware(db, authMiddleware)
 
 	// Admin routes group with authentication and authorization middleware
-	admin := router.Group("/api/admin")
+	// CHANGED: from "/api/admin" to "/api/v1/admin"
+	admin := router.Group("/api/v1/admin")
 	admin.Use(authMiddleware.RequireAuth())   // Verify JWT token
 	admin.Use(adminMiddleware.RequireAdmin()) // Verify admin role
 	admin.Use(middleware.AdminRateLimit())    // Rate limiting for admins
@@ -263,43 +264,22 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, d
 	}
 }
 
-// SetupAdminMiddleware returns the standard set of admin middleware
-func SetupAdminMiddleware(db *mongo.Database, jwtSecret, refreshSecret string) []gin.HandlerFunc {
-	authMiddleware := middleware.NewAuthMiddleware(db, jwtSecret, refreshSecret)
-	adminMiddleware := middleware.NewAdminMiddleware(db, authMiddleware)
-
-	return []gin.HandlerFunc{
-		authMiddleware.RequireAuth(),
-		adminMiddleware.RequireAdmin(),
-		middleware.AdminRateLimit(),
-		middleware.Logger(),
-		middleware.CORS(),
-		adminMiddleware.AdminSecurityHeaders(),
-	}
-}
-
-// SetupHighSecurityAdminMiddleware returns admin middleware with enhanced security
-func SetupHighSecurityAdminMiddleware(db *mongo.Database, jwtSecret, refreshSecret string) []gin.HandlerFunc {
-	authMiddleware := middleware.NewAuthMiddleware(db, jwtSecret, refreshSecret)
-	adminMiddleware := middleware.NewAdminMiddleware(db, authMiddleware)
-
-	return adminMiddleware.HighSecurityAdminMiddleware()
-}
-
 // Public admin routes (no authentication required)
 func SetupPublicAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler) {
-	public := router.Group("/api/admin/public")
+	// CHANGED: from "/api/admin/public" to "/api/v1/admin/public"
+	public := router.Group("/api/v1/admin/public")
 	public.Use(middleware.CORS())
 	public.GET("/status", adminHandler.GetPublicSystemStatus)
 	public.GET("/health", adminHandler.GetPublicHealthCheck)
+
 	// Authentication routes
 	auth := public.Group("/auth")
 
 	cfg := config.GetConfig()
 	if cfg.IsDevelopment() {
 		log.Println("⚠️  ALL RATE LIMITING DISABLED FOR DEVELOPMENT")
-		log.Println("🔑 Login endpoint: POST /api/admin/public/auth/login")
-		log.Println("🔄 Refresh endpoint: POST /api/admin/public/auth/refresh")
+		log.Println("🔑 Login endpoint: POST /api/v1/admin/public/auth/login")
+		log.Println("🔄 Refresh endpoint: POST /api/v1/admin/public/auth/refresh")
 		// NO MIDDLEWARE APPLIED IN DEVELOPMENT
 	} else {
 		// Only apply rate limiting in production
@@ -320,7 +300,8 @@ func SetupAdminWebSocketRoutes(router *gin.Engine, adminHandler *handlers.AdminH
 	authMiddleware := middleware.NewAuthMiddleware(db, jwtSecret, refreshSecret)
 	adminMiddleware := middleware.NewAdminMiddleware(db, authMiddleware)
 
-	ws := router.Group("/api/admin/ws")
+	// CHANGED: from "/api/admin/ws" to "/api/v1/admin/ws"
+	ws := router.Group("/api/v1/admin/ws")
 	ws.Use(authMiddleware.RequireAuth())
 	ws.Use(adminMiddleware.RequireAdmin())
 	ws.Use(adminMiddleware.WebSocketUpgradeMiddleware())
@@ -343,7 +324,8 @@ func SetupSuperAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandl
 	authMiddleware := middleware.NewAuthMiddleware(db, jwtSecret, refreshSecret)
 	adminMiddleware := middleware.NewAdminMiddleware(db, authMiddleware)
 
-	superAdmin := router.Group("/api/super-admin")
+	// CHANGED: from "/api/super-admin" to "/api/v1/super-admin"
+	superAdmin := router.Group("/api/v1/super-admin")
 	superAdmin.Use(authMiddleware.RequireAuth())
 	superAdmin.Use(adminMiddleware.RequireSuperAdmin())
 	superAdmin.Use(adminMiddleware.AdminRateLimit(500, 5*time.Minute))

@@ -86,20 +86,6 @@ const data = {
       title: "Users",
       icon: IconUsers,
       url: "/admin/users",
-      items: [
-        {
-          title: "All Users",
-          url: "/admin/users",
-        },
-        {
-          title: "Suspended Users",
-          url: "/admin/users?is_suspended=true",
-        },
-        {
-          title: "Unverified Users",
-          url: "/admin/users?is_verified=false",
-        },
-      ],
     },
     {
       title: "Posts",

@@ -1,4 +1,4 @@
-// lib/api-client.ts - Fixed Version with Better Error Handling
+// lib/api-client.ts - Complete API Client Based on Go Routes
 import { DashboardStats } from '@/types/admin'
 
 export interface ApiResponse<T = any> {
@@ -237,7 +237,7 @@ class FetchApiClient {
     }
   }
 
-  // Generic HTTP methods with better error handling
+  // Generic HTTP methods
   async get<T>(url: string, params?: any): Promise<ApiResponse<T>> {
     let finalUrl = url
     if (params) {
@@ -371,7 +371,23 @@ class FetchApiClient {
     }
   }
 
+  async refreshToken(refreshToken: string): Promise<ApiResponse<LoginResponse>> {
+    return this.post('/api/v1/admin/public/auth/refresh', { refresh_token: refreshToken })
+  }
+
+  async forgotPassword(email: string): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/public/auth/forgot-password', { email })
+  }
+
+  async resetPassword(token: string, password: string): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/public/auth/reset-password', { token, password })
+  }
+
   // ==================== DASHBOARD ====================
+  async getDashboard(): Promise<ApiResponse<DashboardStats>> {
+    return this.get<DashboardStats>('/api/v1/admin/dashboard')
+  }
+
   async getDashboardStats(): Promise<ApiResponse<DashboardStats>> {
     console.log('🔄 Fetching dashboard stats...')
     try {
@@ -398,11 +414,13 @@ class FetchApiClient {
   async getUsers(params?: {
     page?: number
     limit?: number
-    status?: string
+    search?: string
     role?: string
+    is_verified?: boolean
+    is_active?: boolean
+    is_suspended?: boolean
     sort_by?: string
     sort_order?: 'asc' | 'desc'
-    search?: string
     date_from?: string
     date_to?: string
   }): Promise<PaginatedResponse> {
@@ -433,29 +451,110 @@ class FetchApiClient {
     }
   }
 
-  async getUser(id: string) {
+  async searchUsers(params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/users/search', params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Users search completed successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Search users error:', error)
+      throw error
+    }
+  }
+
+  async getUser(id: string): Promise<ApiResponse<any>> {
     return this.get(`/api/v1/admin/users/${id}`)
+  }
+
+  async getUserStats(id: string): Promise<ApiResponse<any>> {
+    return this.get(`/api/v1/admin/users/${id}/stats`)
+  }
+
+  async createUser(userData: {
+    username: string
+    email: string
+    password: string
+    first_name?: string
+    last_name?: string
+    bio?: string
+    role?: string
+    is_active?: boolean
+    is_verified?: boolean
+  }): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/users', userData)
+  }
+
+  async updateUser(id: string, userData: {
+    username?: string
+    email?: string
+    first_name?: string
+    last_name?: string
+    bio?: string
+    role?: string
+    is_active?: boolean
+    is_verified?: boolean
+  }): Promise<ApiResponse<any>> {
+    return this.put(`/api/v1/admin/users/${id}`, userData)
   }
 
   async updateUserStatus(id: string, data: { 
     is_active?: boolean
     is_suspended?: boolean
     reason?: string 
-  }) {
+  }): Promise<ApiResponse<any>> {
     return this.put(`/api/v1/admin/users/${id}/status`, data)
   }
 
+  async verifyUser(id: string): Promise<ApiResponse<any>> {
+    return this.put(`/api/v1/admin/users/${id}/verify`)
+  }
+
+  async deleteUser(id: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.delete(`/api/v1/admin/users/${id}`, { reason })
+  }
+
   async bulkUserAction(data: { 
-    user_ids: string[]
+    user_ids?: string[]
     action: string
     reason?: string
     duration?: string
-  }) {
+  }): Promise<ApiResponse<any>> {
     return this.post('/api/v1/admin/users/bulk/actions', data)
   }
 
+  async exportUsers(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/users/export')
+  }
+
   // ==================== POST MANAGEMENT ====================
-  async getPosts(params?: any): Promise<PaginatedResponse> {
+  async getPosts(params?: {
+    page?: number
+    limit?: number
+    user_id?: string
+    type?: string
+    visibility?: string
+    is_reported?: boolean
+    is_hidden?: boolean
+    search?: string
+    date_from?: string
+    date_to?: string
+  }): Promise<PaginatedResponse> {
     try {
       const response = await this.get<any>('/api/v1/admin/posts', params)
       
@@ -482,15 +581,46 @@ class FetchApiClient {
     }
   }
 
-  async getPost(id: string) {
+  async searchPosts(params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/posts/search', params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Posts search completed successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Search posts error:', error)
+      throw error
+    }
+  }
+
+  async getPost(id: string): Promise<ApiResponse<any>> {
     return this.get(`/api/v1/admin/posts/${id}`)
   }
 
-  async hidePost(id: string, reason: string) {
+  async getPostStats(id: string): Promise<ApiResponse<any>> {
+    return this.get(`/api/v1/admin/posts/${id}/stats`)
+  }
+
+  async hidePost(id: string, reason?: string): Promise<ApiResponse<any>> {
     return this.put(`/api/v1/admin/posts/${id}/hide`, { reason })
   }
 
-  async deletePost(id: string, reason: string) {
+  async deletePost(id: string, reason?: string): Promise<ApiResponse<any>> {
     return this.delete(`/api/v1/admin/posts/${id}`, { reason })
   }
 
@@ -498,8 +628,60 @@ class FetchApiClient {
     post_ids: string[]
     action: string
     reason?: string 
-  }) {
+  }): Promise<ApiResponse<any>> {
     return this.post('/api/v1/admin/posts/bulk/actions', data)
+  }
+
+  async exportPosts(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/posts/export')
+  }
+
+  // ==================== COMMENT MANAGEMENT ====================
+  async getComments(params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/comments', params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Comments fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get comments error:', error)
+      throw error
+    }
+  }
+
+  async getComment(id: string): Promise<ApiResponse<any>> {
+    return this.get(`/api/v1/admin/comments/${id}`)
+  }
+
+  async hideComment(id: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.put(`/api/v1/admin/comments/${id}/hide`, { reason })
+  }
+
+  async deleteComment(id: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.delete(`/api/v1/admin/comments/${id}`, { reason })
+  }
+
+  async bulkCommentAction(data: { 
+    comment_ids: string[]
+    action: string
+    reason?: string 
+  }): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/comments/bulk/actions', data)
   }
 
   // ==================== GROUP MANAGEMENT ====================
@@ -530,7 +712,7 @@ class FetchApiClient {
     }
   }
 
-  async getGroup(id: string) {
+  async getGroup(id: string): Promise<ApiResponse<any>> {
     return this.get(`/api/v1/admin/groups/${id}`)
   }
 
@@ -565,11 +747,11 @@ class FetchApiClient {
     is_active?: boolean
     status?: string
     reason?: string 
-  }) {
+  }): Promise<ApiResponse<any>> {
     return this.put(`/api/v1/admin/groups/${id}/status`, data)
   }
 
-  async deleteGroup(id: string, reason: string) {
+  async deleteGroup(id: string, reason?: string): Promise<ApiResponse<any>> {
     return this.delete(`/api/v1/admin/groups/${id}`, { reason })
   }
 
@@ -577,19 +759,19 @@ class FetchApiClient {
     group_ids: string[]
     action: string
     reason?: string 
-  }) {
+  }): Promise<ApiResponse<any>> {
     return this.post('/api/v1/admin/groups/bulk/actions', data)
   }
 
-  // ==================== HASHTAG MANAGEMENT ====================
-  async getHashtags(params?: any): Promise<PaginatedResponse> {
+  // ==================== EVENT MANAGEMENT ====================
+  async getEvents(params?: any): Promise<PaginatedResponse> {
     try {
-      const response = await this.get<any>('/api/v1/admin/hashtags', params)
+      const response = await this.get<any>('/api/v1/admin/events', params)
       
       if (Array.isArray(response.data)) {
         return {
           success: true,
-          message: 'Hashtags fetched successfully',
+          message: 'Events fetched successfully',
           data: response.data,
           pagination: {
             current_page: 1,
@@ -604,37 +786,59 @@ class FetchApiClient {
       
       return response as PaginatedResponse
     } catch (error) {
-      console.error('❌ Get hashtags error:', error)
+      console.error('❌ Get events error:', error)
       throw error
     }
   }
 
-  async getHashtag(id: string) {
-    return this.get(`/api/v1/admin/hashtags/${id}`)
+  async getEvent(id: string): Promise<ApiResponse<any>> {
+    return this.get(`/api/v1/admin/events/${id}`)
   }
 
-  async getTrendingHashtags(limit: number = 20) {
-    return this.get('/api/v1/admin/hashtags/trending', { limit })
+  async getEventAttendees(id: string, params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>(`/api/v1/admin/events/${id}/attendees`, params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Event attendees fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get event attendees error:', error)
+      throw error
+    }
   }
 
-  async blockHashtag(id: string, reason: string) {
-    return this.put(`/api/v1/admin/hashtags/${id}/block`, { reason })
+  async updateEventStatus(id: string, data: { 
+    status?: string
+    reason?: string 
+  }): Promise<ApiResponse<any>> {
+    return this.put(`/api/v1/admin/events/${id}/status`, data)
   }
 
-  async unblockHashtag(id: string) {
-    return this.put(`/api/v1/admin/hashtags/${id}/unblock`)
+  async deleteEvent(id: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.delete(`/api/v1/admin/events/${id}`, { reason })
   }
 
-  async deleteHashtag(id: string, reason: string) {
-    return this.delete(`/api/v1/admin/hashtags/${id}`, { reason })
-  }
-
-  async bulkHashtagAction(data: { 
-    hashtag_ids: string[]
+  async bulkEventAction(data: { 
+    event_ids: string[]
     action: string
     reason?: string 
-  }) {
-    return this.post('/api/v1/admin/hashtags/bulk/actions', data)
+  }): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/events/bulk/actions', data)
   }
 
   // ==================== STORY MANAGEMENT ====================
@@ -665,15 +869,15 @@ class FetchApiClient {
     }
   }
 
-  async getStory(id: string) {
+  async getStory(id: string): Promise<ApiResponse<any>> {
     return this.get(`/api/v1/admin/stories/${id}`)
   }
 
-  async hideStory(id: string, reason: string) {
+  async hideStory(id: string, reason?: string): Promise<ApiResponse<any>> {
     return this.put(`/api/v1/admin/stories/${id}/hide`, { reason })
   }
 
-  async deleteStory(id: string, reason: string) {
+  async deleteStory(id: string, reason?: string): Promise<ApiResponse<any>> {
     return this.delete(`/api/v1/admin/stories/${id}`, { reason })
   }
 
@@ -681,14 +885,93 @@ class FetchApiClient {
     story_ids: string[]
     action: string
     reason?: string 
-  }) {
+  }): Promise<ApiResponse<any>> {
     return this.post('/api/v1/admin/stories/bulk/actions', data)
+  }
+
+  // ==================== MESSAGE MANAGEMENT ====================
+  async getMessages(params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/messages', params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Messages fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get messages error:', error)
+      throw error
+    }
+  }
+
+  async getMessage(id: string): Promise<ApiResponse<any>> {
+    return this.get(`/api/v1/admin/messages/${id}`)
+  }
+
+  async getConversations(params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/messages/conversations', params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Conversations fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get conversations error:', error)
+      throw error
+    }
+  }
+
+  async getConversation(id: string): Promise<ApiResponse<any>> {
+    return this.get(`/api/v1/admin/messages/conversations/${id}`)
+  }
+
+  async deleteMessage(id: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.delete(`/api/v1/admin/messages/${id}`, { reason })
+  }
+
+  async bulkMessageAction(data: { 
+    message_ids: string[]
+    action: string
+    reason?: string 
+  }): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/messages/bulk/actions', data)
   }
 
   // ==================== REPORT MANAGEMENT ====================
   async getReports(params?: {
     status?: string
     target_type?: string
+    reason?: string
+    priority?: string
+    assigned_to?: string
+    resolved_by?: string
     limit?: number
     skip?: number
     page?: number
@@ -719,20 +1002,32 @@ class FetchApiClient {
     }
   }
 
-  async getReport(id: string) {
+  async getReport(id: string): Promise<ApiResponse<any>> {
     return this.get(`/api/v1/admin/reports/${id}`)
+  }
+
+  async updateReportStatus(id: string, data: {
+    status?: string
+    resolution?: string
+    note?: string
+  }): Promise<ApiResponse<any>> {
+    return this.put(`/api/v1/admin/reports/${id}/status`, data)
+  }
+
+  async assignReport(id: string, adminId: string): Promise<ApiResponse<any>> {
+    return this.put(`/api/v1/admin/reports/${id}/assign`, { admin_id: adminId })
   }
 
   async resolveReport(id: string, data: { 
     resolution: string
     note?: string 
-  }) {
+  }): Promise<ApiResponse<any>> {
     return this.post(`/api/v1/admin/reports/${id}/resolve`, data)
   }
 
   async rejectReport(id: string, data: { 
     note: string 
-  }) {
+  }): Promise<ApiResponse<any>> {
     return this.post(`/api/v1/admin/reports/${id}/reject`, data)
   }
 
@@ -741,16 +1036,547 @@ class FetchApiClient {
     action: string
     resolution?: string
     reason?: string 
-  }) {
+  }): Promise<ApiResponse<any>> {
     return this.post('/api/v1/admin/reports/bulk/actions', data)
   }
 
-  async getReportStats() {
+  async getReportStats(): Promise<ApiResponse<any>> {
     return this.get('/api/v1/admin/reports/stats')
   }
 
+  async getReportSummary(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/reports/stats/summary')
+  }
+
+  // ==================== FOLLOW MANAGEMENT ====================
+  async getFollows(params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/follows', params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Follows fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get follows error:', error)
+      throw error
+    }
+  }
+
+  async getFollow(id: string): Promise<ApiResponse<any>> {
+    return this.get(`/api/v1/admin/follows/${id}`)
+  }
+
+  async deleteFollow(id: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.delete(`/api/v1/admin/follows/${id}`, { reason })
+  }
+
+  async getRelationships(params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/follows/relationships', params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Relationships fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get relationships error:', error)
+      throw error
+    }
+  }
+
+  async bulkFollowAction(data: { 
+    follow_ids: string[]
+    action: string
+    reason?: string 
+  }): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/follows/bulk/actions', data)
+  }
+
+  // ==================== LIKE MANAGEMENT ====================
+  async getLikes(params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/likes', params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Likes fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get likes error:', error)
+      throw error
+    }
+  }
+
+  async getLikeStats(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/likes/stats')
+  }
+
+  async deleteLike(id: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.delete(`/api/v1/admin/likes/${id}`, { reason })
+  }
+
+  async bulkLikeAction(data: { 
+    like_ids: string[]
+    action: string
+    reason?: string 
+  }): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/likes/bulk/actions', data)
+  }
+
+  // ==================== HASHTAG MANAGEMENT ====================
+  async getHashtags(params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/hashtags', params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Hashtags fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get hashtags error:', error)
+      throw error
+    }
+  }
+
+  async getHashtag(id: string): Promise<ApiResponse<any>> {
+    return this.get(`/api/v1/admin/hashtags/${id}`)
+  }
+
+  async getTrendingHashtags(limit: number = 20): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/hashtags/trending', { limit })
+  }
+
+  async blockHashtag(id: string, reason: string): Promise<ApiResponse<any>> {
+    return this.put(`/api/v1/admin/hashtags/${id}/block`, { reason })
+  }
+
+  async unblockHashtag(id: string): Promise<ApiResponse<any>> {
+    return this.put(`/api/v1/admin/hashtags/${id}/unblock`)
+  }
+
+  async deleteHashtag(id: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.delete(`/api/v1/admin/hashtags/${id}`, { reason })
+  }
+
+  async bulkHashtagAction(data: { 
+    hashtag_ids: string[]
+    action: string
+    reason?: string 
+  }): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/hashtags/bulk/actions', data)
+  }
+
+  // ==================== MENTION MANAGEMENT ====================
+  async getMentions(params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/mentions', params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Mentions fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get mentions error:', error)
+      throw error
+    }
+  }
+
+  async getMention(id: string): Promise<ApiResponse<any>> {
+    return this.get(`/api/v1/admin/mentions/${id}`)
+  }
+
+  async deleteMention(id: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.delete(`/api/v1/admin/mentions/${id}`, { reason })
+  }
+
+  async bulkMentionAction(data: { 
+    mention_ids: string[]
+    action: string
+    reason?: string 
+  }): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/mentions/bulk/actions', data)
+  }
+
+  // ==================== MEDIA MANAGEMENT ====================
+  async getMedia(params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/media', params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Media fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get media error:', error)
+      throw error
+    }
+  }
+
+  async getMediaItem(id: string): Promise<ApiResponse<any>> {
+    return this.get(`/api/v1/admin/media/${id}`)
+  }
+
+  async getMediaStats(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/media/stats')
+  }
+
+  async moderateMedia(id: string, data: {
+    moderation_status: string
+    reason?: string
+  }): Promise<ApiResponse<any>> {
+    return this.put(`/api/v1/admin/media/${id}/moderate`, data)
+  }
+
+  async deleteMedia(id: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.delete(`/api/v1/admin/media/${id}`, { reason })
+  }
+
+  async bulkMediaAction(data: { 
+    media_ids: string[]
+    action: string
+    reason?: string 
+  }): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/media/bulk/actions', data)
+  }
+
+  async getStorageStats(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/media/storage/stats')
+  }
+
+  async cleanupStorage(): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/media/storage/cleanup')
+  }
+
+  // ==================== NOTIFICATION MANAGEMENT ====================
+  async getNotifications(params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/notifications', params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Notifications fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get notifications error:', error)
+      throw error
+    }
+  }
+
+  async getNotification(id: string): Promise<ApiResponse<any>> {
+    return this.get(`/api/v1/admin/notifications/${id}`)
+  }
+
+  async sendNotificationToUsers(data: {
+    user_ids: string[]
+    title: string
+    message: string
+    type?: string
+    data?: any
+  }): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/notifications/send', data)
+  }
+
+  async broadcastNotification(data: {
+    title: string
+    message: string
+    type?: string
+    data?: any
+    criteria?: any
+  }): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/notifications/broadcast', data)
+  }
+
+  async getNotificationStats(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/notifications/stats')
+  }
+
+  async deleteNotification(id: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.delete(`/api/v1/admin/notifications/${id}`, { reason })
+  }
+
+  async bulkNotificationAction(data: { 
+    notification_ids: string[]
+    action: string
+    reason?: string 
+  }): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/notifications/bulk/actions', data)
+  }
+
+  // ==================== ANALYTICS ====================
+  async getUserAnalytics(params?: any): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/analytics/users', params)
+  }
+
+  async getContentAnalytics(params?: any): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/analytics/content', params)
+  }
+
+  async getEngagementAnalytics(params?: any): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/analytics/engagement', params)
+  }
+
+  async getGrowthAnalytics(params?: any): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/analytics/growth', params)
+  }
+
+  async getDemographicAnalytics(params?: any): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/analytics/demographics', params)
+  }
+
+  async getRevenueAnalytics(params?: any): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/analytics/revenue', params)
+  }
+
+  async getCustomReport(params?: any): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/analytics/reports/custom', params)
+  }
+
+  async getRealtimeAnalytics(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/analytics/realtime')
+  }
+
+  async getLiveStats(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/analytics/live-stats')
+  }
+
+  // ==================== SYSTEM MANAGEMENT (Super Admin only) ====================
+  async getSystemHealth(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/system/health')
+  }
+
+  async getSystemInfo(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/system/info')
+  }
+
+  async getSystemLogs(params?: any): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/system/logs', params)
+  }
+
+  async getPerformanceMetrics(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/system/performance')
+  }
+
+  async getDatabaseStats(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/system/database/stats')
+  }
+
+  async getCacheStats(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/system/cache/stats')
+  }
+
+  async clearCache(): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/system/cache/clear')
+  }
+
+  async warmCache(): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/system/cache/warm')
+  }
+
+  async enableMaintenanceMode(): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/system/maintenance/enable')
+  }
+
+  async disableMaintenanceMode(): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/system/maintenance/disable')
+  }
+
+  async backupDatabase(): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/system/database/backup')
+  }
+
+  async getDatabaseBackups(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/system/database/backups')
+  }
+
+  async restoreDatabase(backupId: string): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/system/database/restore', { backup_id: backupId })
+  }
+
+  async optimizeDatabase(): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/system/database/optimize')
+  }
+
+  // ==================== CONFIGURATION MANAGEMENT (Super Admin only) ====================
+  async getConfiguration(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/config')
+  }
+
+  async updateConfiguration(config: any): Promise<ApiResponse<any>> {
+    return this.put('/api/v1/admin/config', config)
+  }
+
+  async getConfigurationHistory(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/config/history')
+  }
+
+  async rollbackConfiguration(version: string): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/config/rollback', { version })
+  }
+
+  async validateConfiguration(config: any): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/config/validate', config)
+  }
+
+  async getFeatureFlags(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/config/features')
+  }
+
+  async updateFeatureFlags(features: any): Promise<ApiResponse<any>> {
+    return this.put('/api/v1/admin/config/features', features)
+  }
+
+  async toggleFeature(feature: string): Promise<ApiResponse<any>> {
+    return this.put(`/api/v1/admin/config/features/${feature}/toggle`)
+  }
+
+  async getRateLimits(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/config/rate-limits')
+  }
+
+  async updateRateLimits(limits: any): Promise<ApiResponse<any>> {
+    return this.put('/api/v1/admin/config/rate-limits', limits)
+  }
+
+  // ==================== PUBLIC ADMIN ROUTES ====================
+  async getPublicSystemStatus(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/public/status')
+  }
+
+  async getPublicHealthCheck(): Promise<ApiResponse<any>> {
+    return this.get('/api/v1/admin/public/health')
+  }
+
+  // ==================== WEBSOCKET CONNECTIONS ====================
+  connectWebSocket(endpoint: string, onMessage?: (data: any) => void): WebSocket | null {
+    if (typeof window === 'undefined') return null
+
+    try {
+      const token = this.getStoredToken()
+      const wsUrl = `${process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080'}/api/v1/admin/ws/${endpoint}`
+      
+      const ws = new WebSocket(wsUrl, ['Authorization', `Bearer ${token}`])
+
+      ws.onopen = () => {
+        console.log(`✅ WebSocket connected: ${endpoint}`)
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          onMessage?.(data)
+        } catch (error) {
+          console.error('Failed to parse WebSocket message:', error)
+        }
+      }
+
+      ws.onclose = () => {
+        console.log(`🔌 WebSocket disconnected: ${endpoint}`)
+      }
+
+      ws.onerror = (error) => {
+        console.error(`❌ WebSocket error on ${endpoint}:`, error)
+      }
+
+      return ws
+    } catch (error) {
+      console.error('Failed to create WebSocket connection:', error)
+      return null
+    }
+  }
+
   // ==================== UTILITY METHODS ====================
-  
   getCurrentToken(): string | null {
     return this.getStoredToken()
   }

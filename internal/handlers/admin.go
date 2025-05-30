@@ -22,17 +22,19 @@ import (
 
 type AdminHandler struct {
 	adminService *services.AdminService
+	authService  *services.AuthService
 	db           *mongo.Database
 	upgrader     websocket.Upgrader
 }
 
-func NewAdminHandler(adminService *services.AdminService, db *mongo.Database) *AdminHandler {
+func NewAdminHandler(adminService *services.AdminService, authService *services.AuthService, db *mongo.Database) *AdminHandler {
 	return &AdminHandler{
 		adminService: adminService,
+		authService:  authService,
 		db:           db,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
-				return true // Configure appropriately for production
+				return true
 			},
 		},
 	}
@@ -5486,6 +5488,7 @@ func (h *AdminHandler) GetPublicHealthCheck(c *gin.Context) {
 	}
 }
 
+// internal/handlers/admin.go
 func (h *AdminHandler) AdminLogin(c *gin.Context) {
 	var req struct {
 		Email    string `json:"email" binding:"required,email"`
@@ -5497,17 +5500,82 @@ func (h *AdminHandler) AdminLogin(c *gin.Context) {
 		return
 	}
 
-	// This would authenticate admin user
-	// For now, return success response
+	ctx := c.Request.Context()
+
+	// Find admin user by email
+	var user models.User
+	err := h.db.Collection("users").FindOne(ctx, bson.M{
+		"email":      req.Email,
+		"role":       bson.M{"$in": []string{"admin", "super_admin"}}, // Only admin/super_admin can login
+		"is_active":  true,
+		"deleted_at": bson.M{"$exists": false},
+	}).Decode(&user)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			utils.UnauthorizedResponse(c, "Invalid credentials or insufficient permissions")
+			return
+		}
+		utils.InternalServerErrorResponse(c, "Login failed", err)
+		return
+	}
+
+	// Check password
+	if !utils.CheckPasswordHash(req.Password, user.Password) {
+		utils.UnauthorizedResponse(c, "Invalid credentials")
+		return
+	}
+
+	// Check if user is suspended
+	if user.IsSuspended {
+		utils.ForbiddenResponse(c, "Account is suspended")
+		return
+	}
+
+	// Generate real JWT tokens using AuthService
+	sessionID := primitive.NewObjectID().Hex()
+	accessToken, refreshToken, err := h.authService.GenerateTokens(&user, sessionID, c.GetHeader("User-Agent"), c.ClientIP())
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to generate tokens", err)
+		return
+	}
+
+	// Create admin session
+	session := bson.M{
+		"user_id":          user.ID,
+		"session_id":       sessionID,
+		"device_info":      c.GetHeader("User-Agent"),
+		"ip_address":       c.ClientIP(),
+		"is_active":        true,
+		"last_activity_at": time.Now(),
+		"expires_at":       time.Now().Add(24 * time.Hour),
+		"created_at":       time.Now(),
+		"updated_at":       time.Now(),
+	}
+
+	_, err = h.db.Collection("admin_sessions").InsertOne(ctx, session)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to create session", err)
+		return
+	}
+
+	// Log admin login
+	h.logAdminActivity(c, "admin_login", "Admin user logged in: "+user.Email)
+
+	// Return real authentication data
 	utils.OkResponse(c, "Admin login successful", gin.H{
-		"access_token":  "admin_access_token",
-		"refresh_token": "admin_refresh_token",
-		"expires_in":    3600,
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"expires_in":    24 * 60 * 60, // 24 hours
+		"token_type":    "Bearer",
 		"user": gin.H{
-			"id":       "admin_id",
-			"email":    req.Email,
-			"role":     "admin",
-			"username": "admin",
+			"id":          user.ID.Hex(),
+			"email":       user.Email,
+			"username":    user.Username,
+			"first_name":  user.FirstName,
+			"last_name":   user.LastName,
+			"role":        user.Role,
+			"is_verified": user.IsVerified,
 		},
 	})
 }

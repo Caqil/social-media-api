@@ -18,10 +18,10 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, d
 
 	// Admin routes group with authentication and authorization middleware
 	admin := router.Group("/api/admin")
-	admin.Use(authMiddleware.RequireAuth())                   // Verify JWT token
-	admin.Use(adminMiddleware.RequireAdmin())                 // Verify admin role
-	admin.Use(middleware.AdminRateLimit()) // Rate limiting for admins
-	admin.Use(middleware.Logger())                            // Request logging
+	admin.Use(authMiddleware.RequireAuth())   // Verify JWT token
+	admin.Use(adminMiddleware.RequireAdmin()) // Verify admin role
+	admin.Use(middleware.AdminRateLimit())    // Rate limiting for admins
+	admin.Use(middleware.Logger())            // Request logging
 
 	// Dashboard
 	admin.GET("/dashboard", adminHandler.GetDashboard)
@@ -288,10 +288,6 @@ func SetupHighSecurityAdminMiddleware(db *mongo.Database, jwtSecret, refreshSecr
 func SetupPublicAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler) {
 	public := router.Group("/api/admin/public")
 	public.Use(middleware.CORS())
-
-	// System status (for monitoring)
-	public.GET("/status", adminHandler.GetPublicSystemStatus)
-	public.GET("/health", adminHandler.GetPublicHealthCheck)
 
 	// Authentication routes
 	auth := public.Group("/auth")

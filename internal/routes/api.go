@@ -10,12 +10,14 @@ import (
 	"social-media-api/internal/services"
 
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // APIRouter holds all route handlers and services
 type APIRouter struct {
 	// Handlers
 	AuthHandler         *handlers.AuthHandler
+	AdminHandler        *handlers.AdminHandler
 	UserHandler         *handlers.UserHandler
 	PostHandler         *handlers.PostHandler
 	CommentHandler      *handlers.CommentHandler
@@ -34,13 +36,16 @@ type APIRouter struct {
 	// Middleware
 	AuthMiddleware     *middleware.AuthMiddleware
 	BehaviorMiddleware *middleware.BehaviorTrackingMiddleware
-	// Services (for dependency injection)
-	Services *Services
+	DB                 *mongo.Database
+	JWTSecret          string
+	RefreshSecret      string
+	Services           *Services
 }
 
 // Services holds all service instances
 type Services struct {
 	AuthService         *services.AuthService
+	AdminService        *services.AdminService
 	UserService         *services.UserService
 	PostService         *services.PostService
 	CommentService      *services.CommentService
@@ -92,7 +97,12 @@ func SetupRoutes(router *gin.Engine, apiRouter *APIRouter) {
 	SetupSocialRoutes(router, apiRouter.FeedHandler, apiRouter.SearchHandler, apiRouter.LikeHandler, apiRouter.AuthMiddleware)
 	SetupNotificationRoutes(router, apiRouter.NotificationHandler, apiRouter.AuthMiddleware)
 	SetupMediaRoutes(router, apiRouter.MediaHandler, apiRouter.AuthMiddleware)
+	SetupPublicAdminRoutes(router, apiRouter.AdminHandler)
 
+	// SetupPublicAdminRoutes(router, apiRouter.AdminHandler)
+	// SetupAdminRoutes(router, apiRouter.AdminHandler, apiRouter.DB, apiRouter.JWTSecret, apiRouter.RefreshSecret)
+	// SetupAdminWebSocketRoutes(router, apiRouter.AdminHandler, apiRouter.DB, apiRouter.JWTSecret, apiRouter.RefreshSecret)
+	// SetupSuperAdminRoutes(router, apiRouter.AdminHandler, apiRouter.DB, apiRouter.JWTSecret, apiRouter.RefreshSecret)
 	// 404 handler
 	router.NoRoute(middleware.NotFoundHandler())
 
@@ -155,7 +165,7 @@ func apiInfo(c *gin.Context) {
 }
 
 // NewAPIRouter creates a new API router with all dependencies
-func NewAPIRouter(services *Services, authMiddleware *middleware.AuthMiddleware, behaviorMiddleware *middleware.BehaviorTrackingMiddleware) *APIRouter {
+func NewAPIRouter(services *Services, authMiddleware *middleware.AuthMiddleware, behaviorMiddleware *middleware.BehaviorTrackingMiddleware, db *mongo.Database, jwtSecret, refreshSecret string) *APIRouter {
 	return &APIRouter{
 		// Initialize handlers with their respective services
 		AuthHandler:         handlers.NewAuthHandler(services.AuthService, services.UserService),
@@ -177,7 +187,7 @@ func NewAPIRouter(services *Services, authMiddleware *middleware.AuthMiddleware,
 		// Middleware
 		AuthMiddleware:     authMiddleware,
 		BehaviorMiddleware: behaviorMiddleware,
-		// Services
-		Services: services,
+		AdminHandler:       handlers.NewAdminHandler(services.AdminService, services.AuthService, db),
+		Services:           services,
 	}
 }

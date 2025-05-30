@@ -68,7 +68,7 @@ func main() {
 	middleware.InitValidator()
 
 	// Create API router with all dependencies
-	apiRouter := routes.NewAPIRouter(services, authMiddleware, behaviorMiddleware)
+	apiRouter := routes.NewAPIRouter(services, authMiddleware, behaviorMiddleware, config.DB, cfg.JWT.SecretKey, cfg.JWT.RefreshSecretKey)
 
 	// Initialize Gin router
 	router := gin.New()
@@ -116,6 +116,7 @@ func initializeServices(cfg *config.Config) *routes.Services {
 
 	// Initialize core services first (no dependencies)
 	authService := services.NewAuthService(cfg.JWT.SecretKey, cfg.JWT.RefreshSecretKey)
+	adminService := services.NewAdminService(config.DB)
 	userService := services.NewUserService()
 	postService := services.NewPostService()
 	commentService := services.NewCommentService()
@@ -172,6 +173,7 @@ func initializeServices(cfg *config.Config) *routes.Services {
 
 	return &routes.Services{
 		AuthService:         authService,
+		AdminService:        adminService,
 		UserService:         userService,
 		PostService:         postService,
 		CommentService:      commentService,

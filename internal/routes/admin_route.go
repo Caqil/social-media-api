@@ -3,28 +3,66 @@ package routes
 
 import (
 	"log"
-	"time"
+	"net/http"
 
 	"social-media-api/internal/config"
 	"social-media-api/internal/handlers"
 	"social-media-api/internal/middleware"
+	"social-media-api/internal/models"
+	"social-media-api/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, db *mongo.Database, jwtSecret, refreshSecret string) {
-	// Create middleware instances
-	authMiddleware := middleware.NewAuthMiddleware(db, jwtSecret, refreshSecret)
-	adminMiddleware := middleware.NewAdminMiddleware(db, authMiddleware)
+// Simple admin middleware - just check if user has admin role
+func requireAdminRole() gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		// Get user role from context (set by regular auth middleware)
+		userRole, exists := c.Get("user_role")
+		if !exists {
+			utils.ErrorResponse(c, http.StatusUnauthorized, "Authentication required", nil)
+			c.Abort()
+			return
+		}
 
-	// Admin routes group with authentication and authorization middleware
-	// CHANGED: from "/api/admin" to "/api/v1/admin"
+		role := userRole.(models.UserRole)
+		if role != models.RoleAdmin && role != models.RoleSuperAdmin {
+			utils.ErrorResponse(c, http.StatusForbidden, "Admin access required", nil)
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	})
+}
+
+// Simple super admin middleware
+func requireSuperAdminRole() gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		userRole, exists := c.Get("user_role")
+		if !exists {
+			utils.ErrorResponse(c, http.StatusUnauthorized, "Authentication required", nil)
+			c.Abort()
+			return
+		}
+
+		role := userRole.(models.UserRole)
+		if role != models.RoleSuperAdmin {
+			utils.ErrorResponse(c, http.StatusForbidden, "Super admin access required", nil)
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	})
+}
+
+func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, authMiddleware *middleware.AuthMiddleware) {
 	admin := router.Group("/api/v1/admin")
-	admin.Use(authMiddleware.RequireAuth())   // Verify JWT token
-	admin.Use(adminMiddleware.RequireAdmin()) // Verify admin role
-	admin.Use(middleware.AdminRateLimit())    // Rate limiting for admins
-	admin.Use(middleware.Logger())            // Request logging
+	admin.Use(authMiddleware.RequireAuth()) // Same auth that works for users
+	admin.Use(requireAdminRole())           // Simple role check
+	admin.Use(middleware.Logger())          // Request logging
 
 	// Dashboard
 	admin.GET("/dashboard", adminHandler.GetDashboard)
@@ -216,8 +254,9 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, d
 		analytics.GET("/live-stats", adminHandler.GetLiveStats)
 	}
 
-	// System Management
+	// System Management (Super Admin only)
 	system := admin.Group("/system")
+	system.Use(requireSuperAdminRole()) // Additional check for super admin
 	{
 		system.GET("/health", adminHandler.GetSystemHealth)
 		system.GET("/info", adminHandler.GetSystemInfo)
@@ -226,26 +265,22 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, d
 		system.GET("/database/stats", adminHandler.GetDatabaseStats)
 		system.GET("/cache/stats", adminHandler.GetCacheStats)
 
-		// System operations (require super admin)
-		systemOps := system.Group("")
-		systemOps.Use(adminMiddleware.RequireSuperAdmin())
-		{
-			systemOps.POST("/cache/clear", adminHandler.ClearCache)
-			systemOps.POST("/cache/warm", adminHandler.WarmCache)
-			systemOps.POST("/maintenance/enable", adminHandler.EnableMaintenanceMode)
-			systemOps.POST("/maintenance/disable", adminHandler.DisableMaintenanceMode)
+		// System operations
+		system.POST("/cache/clear", adminHandler.ClearCache)
+		system.POST("/cache/warm", adminHandler.WarmCache)
+		system.POST("/maintenance/enable", adminHandler.EnableMaintenanceMode)
+		system.POST("/maintenance/disable", adminHandler.DisableMaintenanceMode)
 
-			// Database operations
-			systemOps.POST("/database/backup", adminHandler.BackupDatabase)
-			systemOps.GET("/database/backups", adminHandler.GetDatabaseBackups)
-			systemOps.POST("/database/restore", adminHandler.RestoreDatabase)
-			systemOps.POST("/database/optimize", adminHandler.OptimizeDatabase)
-		}
+		// Database operations
+		system.POST("/database/backup", adminHandler.BackupDatabase)
+		system.GET("/database/backups", adminHandler.GetDatabaseBackups)
+		system.POST("/database/restore", adminHandler.RestoreDatabase)
+		system.POST("/database/optimize", adminHandler.OptimizeDatabase)
 	}
 
 	// Configuration Management (Super Admin only)
 	config := admin.Group("/config")
-	config.Use(adminMiddleware.RequireSuperAdmin())
+	config.Use(requireSuperAdminRole())
 	{
 		config.GET("", adminHandler.GetConfiguration)
 		config.PUT("", adminHandler.UpdateConfiguration)
@@ -266,7 +301,6 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, d
 
 // Public admin routes (no authentication required)
 func SetupPublicAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler) {
-	// CHANGED: from "/api/admin/public" to "/api/v1/admin/public"
 	public := router.Group("/api/v1/admin/public")
 	public.Use(middleware.CORS())
 	public.GET("/status", adminHandler.GetPublicSystemStatus)
@@ -298,13 +332,10 @@ func SetupPublicAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHand
 // WebSocket routes for real-time admin features
 func SetupAdminWebSocketRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, db *mongo.Database, jwtSecret, refreshSecret string) {
 	authMiddleware := middleware.NewAuthMiddleware(db, jwtSecret, refreshSecret)
-	adminMiddleware := middleware.NewAdminMiddleware(db, authMiddleware)
 
-	// CHANGED: from "/api/admin/ws" to "/api/v1/admin/ws"
 	ws := router.Group("/api/v1/admin/ws")
 	ws.Use(authMiddleware.RequireAuth())
-	ws.Use(adminMiddleware.RequireAdmin())
-	ws.Use(adminMiddleware.WebSocketUpgradeMiddleware())
+	ws.Use(requireAdminRole())
 
 	// Real-time dashboard updates
 	ws.GET("/dashboard", adminHandler.DashboardWebSocket)
@@ -322,14 +353,10 @@ func SetupAdminWebSocketRoutes(router *gin.Engine, adminHandler *handlers.AdminH
 // SetupSuperAdminRoutes sets up routes that require super admin access
 func SetupSuperAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, db *mongo.Database, jwtSecret, refreshSecret string) {
 	authMiddleware := middleware.NewAuthMiddleware(db, jwtSecret, refreshSecret)
-	adminMiddleware := middleware.NewAdminMiddleware(db, authMiddleware)
 
-	// CHANGED: from "/api/super-admin" to "/api/v1/super-admin"
 	superAdmin := router.Group("/api/v1/super-admin")
 	superAdmin.Use(authMiddleware.RequireAuth())
-	superAdmin.Use(adminMiddleware.RequireSuperAdmin())
-	superAdmin.Use(adminMiddleware.AdminRateLimit(500, 5*time.Minute))
-	superAdmin.Use(adminMiddleware.AdminAuditLog())
+	superAdmin.Use(requireSuperAdminRole())
 
 	// Additional super admin only routes can be added here
 	// These would be for extremely sensitive operations

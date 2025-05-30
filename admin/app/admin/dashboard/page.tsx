@@ -1,7 +1,7 @@
-// app/admin/dashboard/page.tsx - Final Fix - Prevent Multiple Requests
+// app/admin/dashboard/page.tsx - Final Version with Request Deduplication
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ChartAreaInteractive } from "@/components/chart-area-interactive";
 import { SiteHeader } from "@/components/site-header";
@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { withAuth, useAuth } from "@/contexts/auth-context";
 import { apiClient } from "@/lib/api-client";
+import { requestManager } from "@/lib/request-manager";
 import { DashboardStats } from "@/types/admin";
 import {
   IconTrendingUp,
@@ -29,7 +30,8 @@ import {
   IconRefresh,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
-import { DebugAuth } from "@/components/debug-auth";
+
+const DASHBOARD_STATS_KEY = "dashboard-stats";
 
 function DashboardPage() {
   const { user } = useAuth();
@@ -37,47 +39,31 @@ function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Use ref to prevent multiple concurrent requests
-  const fetchingRef = useRef(false);
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const fetchDashboardStats = async () => {
-    // Prevent multiple concurrent requests
-    if (fetchingRef.current) {
-      console.log("🔄 Dashboard fetch already in progress, skipping...");
-      return;
-    }
-
-    fetchingRef.current = true;
-
+  const fetchDashboardStats = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError(null);
 
-      console.log("🔄 Fetching dashboard stats...");
-      const response = await apiClient.getDashboardStats();
+      console.log(`🔄 Fetching dashboard stats (force: ${forceRefresh})...`);
 
-      // Check if component is still mounted
-      if (!mountedRef.current) {
-        console.log("⚠️ Component unmounted, ignoring response");
-        return;
+      // Clear cache if force refresh
+      if (forceRefresh) {
+        requestManager.clearCache(DASHBOARD_STATS_KEY);
       }
+
+      // Use request manager to prevent duplicate calls
+      const response = await requestManager.request(
+        DASHBOARD_STATS_KEY,
+        () => apiClient.getDashboardStats(),
+        {
+          cache: !forceRefresh,
+          cacheDuration: 30000, // 30 seconds
+        }
+      );
 
       console.log("✅ Dashboard stats fetched successfully");
       setStats(response.data);
     } catch (error: any) {
-      // Check if component is still mounted
-      if (!mountedRef.current) {
-        console.log("⚠️ Component unmounted, ignoring error");
-        return;
-      }
-
       console.error("❌ Failed to fetch dashboard stats:", error);
       const errorMessage =
         error.response?.data?.message ||
@@ -85,24 +71,18 @@ function DashboardPage() {
         "Failed to load dashboard data";
       setError(errorMessage);
     } finally {
-      if (mountedRef.current) {
-        setLoading(false);
-      }
-      fetchingRef.current = false;
+      setLoading(false);
     }
-  };
+  }, []);
 
-  // Single useEffect for initial load
+  // Initial load
   useEffect(() => {
-    // Only fetch if we haven't started fetching yet
-    if (!fetchingRef.current && mountedRef.current) {
-      fetchDashboardStats();
-    }
-  }, []); // Empty dependency array - only run once
-
-  const handleRefresh = () => {
     fetchDashboardStats();
-  };
+  }, [fetchDashboardStats]);
+
+  const handleRefresh = useCallback(() => {
+    fetchDashboardStats(true); // Force refresh
+  }, [fetchDashboardStats]);
 
   if (error && !loading) {
     return (
@@ -124,7 +104,7 @@ function DashboardPage() {
                 <Button
                   onClick={handleRefresh}
                   className="w-full"
-                  disabled={loading || fetchingRef.current}
+                  disabled={loading}
                 >
                   <IconRefresh className="h-4 w-4 mr-2" />
                   Retry
@@ -152,12 +132,6 @@ function DashboardPage() {
         <div className="flex flex-1 flex-col">
           <div className="@container/main flex flex-1 flex-col gap-2">
             <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-              {/* Debug Auth Status (Development Only) */}
-              <div className="px-4 lg:px-6">
-                <DebugAuth />
-              </div>
-
-              {/* Welcome Message */}
               <div className="px-4 lg:px-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -172,11 +146,11 @@ function DashboardPage() {
                     onClick={handleRefresh}
                     variant="outline"
                     size="sm"
-                    disabled={loading || fetchingRef.current}
+                    disabled={loading}
                   >
                     <IconRefresh
                       className={`h-4 w-4 mr-2 ${
-                        loading || fetchingRef.current ? "animate-spin" : ""
+                        loading ? "animate-spin" : ""
                       }`}
                     />
                     Refresh

@@ -98,9 +98,9 @@ func SetupRoutes(router *gin.Engine, apiRouter *APIRouter) {
 	SetupNotificationRoutes(router, apiRouter.NotificationHandler, apiRouter.AuthMiddleware)
 	SetupMediaRoutes(router, apiRouter.MediaHandler, apiRouter.AuthMiddleware)
 	SetupPublicAdminRoutes(router, apiRouter.AdminHandler)
-	SetupAdminRoutes(router, apiRouter.AdminHandler, apiRouter.DB, apiRouter.JWTSecret, apiRouter.RefreshSecret)
-	SetupAdminWebSocketRoutes(router, apiRouter.AdminHandler, apiRouter.DB, apiRouter.JWTSecret, apiRouter.RefreshSecret)
-	SetupSuperAdminRoutes(router, apiRouter.AdminHandler, apiRouter.DB, apiRouter.JWTSecret, apiRouter.RefreshSecret)
+	SetupAdminRoutes(router, apiRouter.AdminHandler, apiRouter.AuthMiddleware)
+	// SetupAdminWebSocketRoutes(router, apiRouter.AdminHandler, apiRouter.DB, apiRouter.JWTSecret, apiRouter.RefreshSecret)
+	// SetupSuperAdminRoutes(router, apiRouter.AdminHandler, apiRouter.DB, apiRouter.JWTSecret, apiRouter.RefreshSecret)
 	// 404 handler
 	router.NoRoute(middleware.NotFoundHandler())
 

@@ -1,4 +1,4 @@
-// lib/storage-utils.ts - Safe localStorage access
+// lib/storage-utils.ts - Enhanced version with better error handling
 export const storage = {
     // Safe localStorage getter
     getItem: (key: string): string | null => {
@@ -137,27 +137,174 @@ export const storage = {
     return [storedValue, setValue, isLoading]
   }
   
-  // Auth-specific storage helpers
+  // Auth-specific storage helpers with better error handling
   export const authStorage = {
-    getToken: (): string | null => storage.getItem('admin_token'),
-    setToken: (token: string): boolean => storage.setItem('admin_token', token),
-    removeToken: (): boolean => storage.removeItem('admin_token'),
+    getToken: (): string | null => {
+      try {
+        return storage.getItem('admin_token')
+      } catch (error) {
+        console.error('Error getting admin token:', error)
+        return null
+      }
+    },
+    
+    setToken: (token: string): boolean => {
+      try {
+        return storage.setItem('admin_token', token)
+      } catch (error) {
+        console.error('Error setting admin token:', error)
+        return false
+      }
+    },
+    
+    removeToken: (): boolean => {
+      try {
+        return storage.removeItem('admin_token')
+      } catch (error) {
+        console.error('Error removing admin token:', error)
+        return false
+      }
+    },
   
-    getRefreshToken: (): string | null => storage.getItem('admin_refresh_token'),
-    setRefreshToken: (token: string): boolean => storage.setItem('admin_refresh_token', token),
-    removeRefreshToken: (): boolean => storage.removeItem('admin_refresh_token'),
+    getRefreshToken: (): string | null => {
+      try {
+        return storage.getItem('admin_refresh_token')
+      } catch (error) {
+        console.error('Error getting refresh token:', error)
+        return null
+      }
+    },
+    
+    setRefreshToken: (token: string): boolean => {
+      try {
+        return storage.setItem('admin_refresh_token', token)
+      } catch (error) {
+        console.error('Error setting refresh token:', error)
+        return false
+      }
+    },
+    
+    removeRefreshToken: (): boolean => {
+      try {
+        return storage.removeItem('admin_refresh_token')
+      } catch (error) {
+        console.error('Error removing refresh token:', error)
+        return false
+      }
+    },
   
-    getUser: <T>(): T | null => storage.getJSON<T>('admin_user'),
-    setUser: <T>(user: T): boolean => storage.setJSON('admin_user', user),
-    removeUser: (): boolean => storage.removeItem('admin_user'),
+    getUser: <T>(): T | null => {
+      try {
+        return storage.getJSON<T>('admin_user')
+      } catch (error) {
+        console.error('Error getting user data:', error)
+        return null
+      }
+    },
+    
+    setUser: <T>(user: T): boolean => {
+      try {
+        return storage.setJSON('admin_user', user)
+      } catch (error) {
+        console.error('Error setting user data:', error)
+        return false
+      }
+    },
+    
+    removeUser: (): boolean => {
+      try {
+        return storage.removeItem('admin_user')
+      } catch (error) {
+        console.error('Error removing user data:', error)
+        return false
+      }
+    },
   
-    clearAll: (): void => {
-      authStorage.removeToken()
-      authStorage.removeRefreshToken()
-      authStorage.removeUser()
+    clearAll: (): boolean => {
+      try {
+        const results = [
+          authStorage.removeToken(),
+          authStorage.removeRefreshToken(),
+          authStorage.removeUser()
+        ]
+        return results.every(result => result)
+      } catch (error) {
+        console.error('Error clearing auth data:', error)
+        return false
+      }
     },
   
     hasValidSession: (): boolean => {
-      return !!(authStorage.getToken() && authStorage.getUser())
+      try {
+        const token = authStorage.getToken()
+        const user = authStorage.getUser()
+        
+        if (!token || !user) {
+          return false
+        }
+  
+        // Basic token validation - check if it's properly formatted
+        const parts = token.split('.')
+        if (parts.length !== 3) {
+          return false
+        }
+  
+        // Check if token is expired
+        try {
+          const payload = JSON.parse(atob(parts[1]))
+          const currentTime = Math.floor(Date.now() / 1000)
+          
+          if (payload.exp && payload.exp < currentTime) {
+            return false
+          }
+        } catch (error) {
+          console.error('Error validating token:', error)
+          return false
+        }
+  
+        return true
+      } catch (error) {
+        console.error('Error checking session validity:', error)
+        return false
+      }
+    },
+  
+    // Get token expiration time
+    getTokenExpiration: (): number | null => {
+      try {
+        const token = authStorage.getToken()
+        if (!token) {
+          return null
+        }
+  
+        const parts = token.split('.')
+        if (parts.length !== 3) {
+          return null
+        }
+  
+        const payload = JSON.parse(atob(parts[1]))
+        return payload.exp || null
+      } catch (error) {
+        console.error('Error getting token expiration:', error)
+        return null
+      }
+    },
+  
+    // Check if token will expire soon (within next 5 minutes)
+    isTokenExpiringSoon: (): boolean => {
+      try {
+        const exp = authStorage.getTokenExpiration()
+        if (!exp) {
+          return true // Assume expiring if we can't determine
+        }
+  
+        const currentTime = Math.floor(Date.now() / 1000)
+        const fiveMinutes = 5 * 60
+        
+        return (exp - currentTime) <= fiveMinutes
+      } catch (error) {
+        console.error('Error checking token expiration:', error)
+        return true
+      }
     }
   }

@@ -59,8 +59,8 @@ function UsersPage() {
     try {
       setLoading(true);
       const response = await apiClient.getUsers(filters);
-      setUsers(response.data);
-      setPagination(response.pagination);
+      setUsers(response.data.data);
+      setPagination(response.data.pagination);
     } catch (error: any) {
       console.error("Failed to fetch users:", error);
       setError(error.response?.data?.message || "Failed to load users");
@@ -348,7 +348,9 @@ function UsersPage() {
                 id="reason"
                 placeholder="Enter reason for this action..."
                 value={actionReason}
-                onChange={(e: { target: { value: SetStateAction<string>; }; }) => setActionReason(e.target.value)}
+                onChange={(e: { target: { value: SetStateAction<string> } }) =>
+                  setActionReason(e.target.value)
+                }
               />
             </div>
           </div>
@@ -397,7 +399,9 @@ function UsersPage() {
                 id="bulk-reason"
                 placeholder="Enter reason for this bulk action..."
                 value={actionReason}
-                onChange={(e: { target: { value: SetStateAction<string>; }; }) => setActionReason(e.target.value)}
+                onChange={(e: { target: { value: SetStateAction<string> } }) =>
+                  setActionReason(e.target.value)
+                }
                 required={bulkAction === "suspend" || bulkAction === "delete"}
               />
             </div>

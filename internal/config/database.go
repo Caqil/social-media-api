@@ -58,18 +58,18 @@ func InitDB() {
 	log.Printf("✅ MongoDB Atlas connected successfully!")
 	log.Printf("📍 Database: %s", dbName)
 
-
 }
 
 // createAtlasClientOptions creates optimized client options for MongoDB Atlas
 func createAtlasClientOptions(mongoURI string) *options.ClientOptions {
 	// Use MongoDB Atlas Stable API (recommended for Atlas)
-	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
+	//serverAPI := options.ServerAPI(options.ServerAPIVersion1)
 
 	// Create base client options
 	clientOptions := options.Client().
-		ApplyURI(mongoURI).
-		SetServerAPIOptions(serverAPI)
+		ApplyURI(mongoURI)
+		//.
+		//SetServerAPIOptions(serverAPI)
 
 	// Connection Pool Settings (optimized for Atlas)
 	maxPoolSize := getEnvUint64("MONGO_MAX_POOL_SIZE", 50)
@@ -142,7 +142,6 @@ func testAtlasConnection(ctx context.Context, client *mongo.Client) error {
 
 	return nil
 }
-
 
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {

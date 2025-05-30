@@ -186,6 +186,21 @@ func LoginRateLimit() gin.HandlerFunc {
 		},
 	})
 }
+func DevLoginRateLimit() gin.HandlerFunc {
+	return RateLimit(RateLimitConfig{
+		Rate:   5000,                // 5 attempts
+		Window: time.Minute * 1, // per 15 minutes
+		KeyFunc: func(c *gin.Context) string {
+			return "login_" + c.ClientIP()
+		},
+		Headers: true,
+		Message: "Too many login attempts",
+		OnLimit: func(c *gin.Context) {
+			// Log failed login attempts
+			SetAuthEvent(c, "LOGIN_RATE_LIMIT_EXCEEDED")
+		},
+	})
+}
 
 // RegisterRateLimit creates a rate limiter for registration
 func RegisterRateLimit() gin.HandlerFunc {

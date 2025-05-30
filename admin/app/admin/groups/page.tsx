@@ -72,8 +72,8 @@ function GroupsPage() {
     try {
       setLoading(true);
       const response = await apiClient.getGroups(filters);
-      setGroups(response.data);
-      setPagination(response.pagination);
+      setGroups(response.data.data);
+      setPagination(response.data.pagination);
     } catch (error: any) {
       console.error("Failed to fetch groups:", error);
       setError(error.response?.data?.message || "Failed to load groups");
@@ -87,8 +87,8 @@ function GroupsPage() {
     try {
       setMembersLoading(true);
       const response = await apiClient.getGroupMembers(groupId);
-      setMembers(response.data);
-      setMembersPagination(response.pagination);
+      setMembers(response.data.data);
+      setMembersPagination(response.data.pagination);
     } catch (error: any) {
       console.error("Failed to fetch group members:", error);
     } finally {

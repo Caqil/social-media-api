@@ -2,28 +2,31 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios'
 
 export interface ApiResponse<T = any> {
-  success: boolean
-  message: string
-  data: T
-}
-
-export interface PaginatedResponse<T = any> extends ApiResponse<T> {
-  pagination: {
-    current_page: number
-    per_page: number
-    total: number
-    total_pages: number
-    has_next: boolean
-    has_previous: boolean
+    success: boolean
+    message: string
+    data: T
   }
-  links: {
-    self: string
-    next?: string
-    previous?: string
-    first?: string
-    last?: string
+  
+  export interface PaginatedResponse<T = any> {
+    success: boolean
+    message: string
+    data: T[]
+    pagination: {
+      current_page: number
+      per_page: number
+      total: number
+      total_pages: number
+      has_next: boolean
+      has_previous: boolean
+    }
+    links: {
+      self: string
+      next?: string
+      previous?: string
+      first?: string
+      last?: string
+    }
   }
-}
 
 class ApiClient {
   private client: AxiosInstance

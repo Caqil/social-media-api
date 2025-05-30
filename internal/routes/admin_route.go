@@ -4,6 +4,7 @@ package routes
 import (
 	"time"
 
+	"social-media-api/internal/config"
 	"social-media-api/internal/handlers"
 	"social-media-api/internal/middleware"
 
@@ -291,7 +292,14 @@ func SetupPublicAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHand
 
 	// Authentication routes
 	auth := public.Group("/auth")
-	auth.Use(middleware.LoginRateLimit())
+
+	cfg := config.GetConfig()
+	if cfg.IsDevelopment() {
+		// More lenient rate limiting for development
+		auth.Use(middleware.DevLoginRateLimit())
+	} else {
+		auth.Use(middleware.LoginRateLimit())
+	}
 	{
 		auth.POST("/login", adminHandler.AdminLogin)
 		auth.POST("/logout", adminHandler.AdminLogout)

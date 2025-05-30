@@ -245,6 +245,7 @@ func InitializeMigrations() []Migration {
 	return []Migration{
 		GetInitialIndexesMigration(),
 		GetSocialFeaturesMigration(),
+		CreateAdminUser001(),
 	}
 }
 

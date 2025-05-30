@@ -90,8 +90,8 @@ function MediaPage() {
     try {
       setLoading(true);
       const response = await apiClient.getMedia(filters);
-      setMedia(response.data);
-      setPagination(response.pagination);
+      setMedia(response.data.data);
+      setPagination(response.data.pagination);
     } catch (error: any) {
       console.error("Failed to fetch media:", error);
       setError(error.response?.data?.message || "Failed to load media");

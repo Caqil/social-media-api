@@ -61,8 +61,8 @@ function CommentsPage() {
     try {
       setLoading(true);
       const response = await apiClient.getComments(filters);
-      setComments(response.data);
-      setPagination(response.pagination);
+      setComments(response.data.data);
+      setPagination(response.data.pagination);
     } catch (error: any) {
       console.error("Failed to fetch comments:", error);
       setError(error.response?.data?.message || "Failed to load comments");

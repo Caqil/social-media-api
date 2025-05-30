@@ -1,4 +1,4 @@
-// contexts/auth-context.tsx - Final Fix for Duplicate Calls
+// contexts/auth-context.tsx - Fixed Version with Better Error Handling
 "use client";
 
 import React, {
@@ -30,9 +30,11 @@ interface AuthContextType {
   isAuthenticated: boolean;
   hasValidToken: boolean;
   isLoading: boolean;
+  error: string | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<boolean>;
+  clearError: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -50,30 +52,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hasValidToken, setHasValidToken] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   // Use refs to prevent duplicate calls
   const initializingRef = useRef(false);
   const loginInProgressRef = useRef(false);
 
-  // Simple token validation - just check existence
-  const validateToken = useCallback(() => {
-    const token = authStorage.getToken();
-    const storedUser = authStorage.getUser<User>();
-
-    if (!token || !storedUser) {
-      console.log("❌ No token or user found");
-      return false;
-    }
-
-    console.log("✅ Token and user found");
-    return true;
+  const clearError = useCallback(() => {
+    setError(null);
   }, []);
 
-  // Initialize auth state - prevent duplicate calls
+  // Simple token validation
+  const validateToken = useCallback(() => {
+    try {
+      const token = authStorage.getToken();
+      const storedUser = authStorage.getUser<User>();
+
+      if (!token || !storedUser) {
+        console.log("❌ No token or user found");
+        return false;
+      }
+
+      // Basic JWT validation
+      const parts = token.split(".");
+      if (parts.length !== 3) {
+        console.log("❌ Invalid token format");
+        return false;
+      }
+
+      try {
+        const payload = JSON.parse(atob(parts[1]));
+        const currentTime = Math.floor(Date.now() / 1000);
+
+        if (payload.exp && payload.exp < currentTime) {
+          console.log("❌ Token expired");
+          return false;
+        }
+      } catch (parseError) {
+        console.log("❌ Token payload invalid");
+        return false;
+      }
+
+      console.log("✅ Token and user valid");
+      return true;
+    } catch (error) {
+      console.error("❌ Token validation error:", error);
+      return false;
+    }
+  }, []);
+
+  // Initialize auth state
   useEffect(() => {
     const initializeAuth = async () => {
-      // Prevent duplicate initialization
       if (initializingRef.current) {
         console.log("⚠️ Auth initialization already in progress, skipping...");
         return;
@@ -83,6 +114,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log("🔄 Initializing auth state...");
 
       try {
+        setError(null);
+
         const isValid = validateToken();
         const storedUser = authStorage.getUser<User>();
 
@@ -97,7 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           setIsAuthenticated(false);
           setHasValidToken(false);
-          console.log("❌ No valid session found");
+          console.log("❌ No valid session found, cleared invalid data");
         }
       } catch (error) {
         console.error("❌ Auth initialization error:", error);
@@ -105,6 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setIsAuthenticated(false);
         setHasValidToken(false);
+        setError("Failed to initialize authentication");
       } finally {
         setIsLoading(false);
         initializingRef.current = false;
@@ -120,7 +154,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [validateToken]);
 
   const login = useCallback(async (email: string, password: string) => {
-    // Prevent duplicate login calls
     if (loginInProgressRef.current) {
       console.log("⚠️ Login already in progress, skipping...");
       return;
@@ -129,21 +162,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loginInProgressRef.current = true;
     console.log("🔄 Starting login process...");
     setIsLoading(true);
+    setError(null);
 
     try {
+      // Validate inputs
+      if (!email || !password) {
+        throw new Error("Email and password are required");
+      }
+
       const response = await apiClient.adminLogin(email, password);
 
-      if (response.success && response.data) {
-        const { user: userData } = response.data;
+      if (!response) {
+        throw new Error("No response from server");
+      }
 
-        setUser(userData);
-        setIsAuthenticated(true);
-        setHasValidToken(true);
-
-        console.log("✅ Login successful, user state updated");
-      } else {
+      if (!response.success) {
         throw new Error(response.message || "Login failed");
       }
+
+      if (!response.data) {
+        throw new Error("Invalid login response data");
+      }
+
+      const { user: userData } = response.data;
+
+      if (!userData) {
+        throw new Error("User data not found in response");
+      }
+
+      setUser(userData);
+      setIsAuthenticated(true);
+      setHasValidToken(true);
+      setError(null);
+
+      console.log("✅ Login successful, user state updated");
     } catch (error: any) {
       console.error("❌ Login failed:", error);
 
@@ -153,11 +205,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsAuthenticated(false);
       setHasValidToken(false);
 
-      throw new Error(
-        error.response?.data?.message ||
-          error.message ||
-          "Login failed. Please try again."
-      );
+      const errorMessage = error.message || "Login failed. Please try again.";
+      setError(errorMessage);
+
+      throw new Error(errorMessage);
     } finally {
       setIsLoading(false);
       loginInProgressRef.current = false;
@@ -167,6 +218,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     console.log("🔄 Starting logout process...");
     setIsLoading(true);
+    setError(null);
 
     try {
       await apiClient.adminLogout();
@@ -181,6 +233,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsAuthenticated(false);
       setHasValidToken(false);
       setIsLoading(false);
+      setError(null);
 
       console.log("✅ Logout completed");
 
@@ -190,17 +243,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   const checkAuth = useCallback(async (): Promise<boolean> => {
-    const isValid = validateToken();
-    const storedUser = authStorage.getUser<User>();
+    try {
+      setError(null);
 
-    if (isValid && storedUser) {
-      if (!isAuthenticated) {
-        setUser(storedUser);
-        setIsAuthenticated(true);
-        setHasValidToken(true);
+      const isValid = validateToken();
+      const storedUser = authStorage.getUser<User>();
+
+      if (isValid && storedUser) {
+        if (!isAuthenticated) {
+          setUser(storedUser);
+          setIsAuthenticated(true);
+          setHasValidToken(true);
+        }
+        return true;
+      } else {
+        authStorage.clearAll();
+        setUser(null);
+        setIsAuthenticated(false);
+        setHasValidToken(false);
+        return false;
       }
-      return true;
-    } else {
+    } catch (error) {
+      console.error("❌ Check auth error:", error);
+      setError("Authentication check failed");
       authStorage.clearAll();
       setUser(null);
       setIsAuthenticated(false);
@@ -214,9 +279,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthenticated,
     hasValidToken,
     isLoading,
+    error,
     login,
     logout,
     checkAuth,
+    clearError,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -225,7 +292,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 // Higher-order component for protecting routes
 export function withAuth<P extends object>(Component: React.ComponentType<P>) {
   return function AuthenticatedComponent(props: P) {
-    const { isAuthenticated, hasValidToken, isLoading, user } = useAuth();
+    const { isAuthenticated, hasValidToken, isLoading, user, error } =
+      useAuth();
     const router = useRouter();
     const redirectingRef = useRef(false);
 
@@ -246,6 +314,24 @@ export function withAuth<P extends object>(Component: React.ComponentType<P>) {
           <div className="text-center">
             <div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary mx-auto mb-4"></div>
             <p className="text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+      );
+    }
+
+    // Show error if authentication failed
+    if (error) {
+      return (
+        <div className="flex h-screen items-center justify-center">
+          <div className="text-center max-w-md">
+            <div className="text-red-600 mb-4">Authentication Error</div>
+            <p className="text-muted-foreground mb-4">{error}</p>
+            <button
+              onClick={() => router.push("/admin/login")}
+              className="px-4 py-2 bg-primary text-white rounded hover:bg-primary/90"
+            >
+              Go to Login
+            </button>
           </div>
         </div>
       );

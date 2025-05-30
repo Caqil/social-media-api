@@ -1,4 +1,4 @@
-// lib/api-client.ts - Complete Fetch Implementation (No Axios)
+// lib/api-client.ts - Fixed Version with Better Error Handling
 import { DashboardStats } from '@/types/admin'
 
 export interface ApiResponse<T = any> {
@@ -46,22 +46,14 @@ export interface LoginResponse {
   }
 }
 
-export interface RefreshResponse {
-  access_token: string
-  refresh_token?: string
-  expires_in?: number
-  token_type?: string
-}
-
 class FetchApiClient {
   private baseURL: string
   private isRefreshing = false
   private refreshPromise: Promise<string> | null = null
-  private wsConnections: Map<string, WebSocket> = new Map()
 
   constructor() {
     this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
-    console.log('🔧 Fetch API Client initialized:', this.baseURL)
+    console.log('🔧 API Client initialized:', this.baseURL)
   }
 
   private getStoredToken(): string | null {
@@ -77,7 +69,7 @@ class FetchApiClient {
     if (typeof window === 'undefined') return
     try {
       localStorage.setItem('admin_token', token)
-      console.log('✅ Token stored')
+      console.log('✅ Token stored successfully')
     } catch (error) {
       console.error('❌ Failed to store token:', error)
     }
@@ -93,7 +85,6 @@ class FetchApiClient {
   }
 
   private async refreshTokenIfNeeded(): Promise<string> {
-    // If already refreshing, wait for the existing refresh
     if (this.isRefreshing && this.refreshPromise) {
       console.log('🔄 Waiting for existing refresh...')
       return this.refreshPromise
@@ -140,7 +131,6 @@ class FetchApiClient {
     if (data.success && data.data?.access_token) {
       const newToken = data.data.access_token
       
-      // Store new tokens
       this.setStoredToken(newToken)
       
       if (data.data.refresh_token && typeof window !== 'undefined') {
@@ -152,72 +142,102 @@ class FetchApiClient {
       throw new Error('Invalid refresh response')
     }
   }
+
   private async makeRequest<T>(
     url: string,
     options: RequestInit = {},
     retryOnAuth = true
   ): Promise<ApiResponse<T>> {
-    const fullUrl = `${this.baseURL}${url}`;
+    const fullUrl = `${this.baseURL}${url}`
 
-    // Get current token
-    const token = this.getStoredToken();
-
-    // Prepare headers as a Headers object
+    const token = this.getStoredToken()
     const headers = new Headers({
       'Content-Type': 'application/json',
       ...options.headers,
-    });
+    })
 
     // Add auth header if token exists and not auth endpoint
     if (token && !url.includes('/auth/')) {
-      headers.set('Authorization', `Bearer ${token}`);
-      console.log(`🔑 Request: ${options.method || 'GET'} ${url} (with token)`);
+      headers.set('Authorization', `Bearer ${token}`)
+      console.log(`🔑 Request: ${options.method || 'GET'} ${url} (with token)`)
     } else {
-      console.log(`🔓 Request: ${options.method || 'GET'} ${url} (no token)`);
+      console.log(`🔓 Request: ${options.method || 'GET'} ${url} (no token)`)
     }
 
-    // Make the request
-    const response = await fetch(fullUrl, {
-      ...options,
-      headers,
-    });
+    try {
+      const response = await fetch(fullUrl, {
+        ...options,
+        headers,
+      })
 
-    console.log(`📡 Response: ${options.method || 'GET'} ${url} - ${response.status}`);
+      console.log(`📡 Response: ${options.method || 'GET'} ${url} - ${response.status}`)
 
-    // Handle 401 with retry
-    if (response.status === 401 && retryOnAuth && !url.includes('/auth/')) {
-      console.log('🔄 Got 401, attempting token refresh...');
+      // Handle 401 with retry
+      if (response.status === 401 && retryOnAuth && !url.includes('/auth/')) {
+        console.log('🔄 Got 401, attempting token refresh...')
 
-      try {
-        // Refresh token and retry
-        await this.refreshTokenIfNeeded();
+        try {
+          await this.refreshTokenIfNeeded()
+          return this.makeRequest<T>(url, options, false)
+        } catch (refreshError) {
+          console.error('❌ Token refresh failed:', refreshError)
+          this.clearAuthData()
 
-        // Retry the request with new token (no retry on second attempt)
-        return this.makeRequest<T>(url, options, false);
-      } catch (refreshError) {
-        console.error('❌ Token refresh failed:', refreshError);
-        this.clearAuthData();
-
-        if (typeof window !== 'undefined') {
-          window.location.href = '/admin/login';
+          if (typeof window !== 'undefined') {
+            window.location.href = '/admin/login'
+          }
+          throw new Error('Authentication failed')
         }
-        throw refreshError;
       }
-    }
 
-    // Handle other errors
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`❌ Request failed: ${response.status} - ${errorText}`);
-      throw new Error(`Request failed: ${response.status}`);
-    }
+      // Parse response
+      let data: any
+      const contentType = response.headers.get('content-type')
+      
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json()
+      } else {
+        const text = await response.text()
+        console.warn('Non-JSON response:', text)
+        data = { success: false, message: 'Invalid response format', data: null }
+      }
 
-    // Parse response
-    const data = await response.json();
-    return data as ApiResponse<T>;
+      // Handle different response structures
+      if (!response.ok) {
+        console.error(`❌ Request failed: ${response.status}`)
+        throw new Error(data.message || `Request failed: ${response.status}`)
+      }
+
+      // Ensure consistent response structure
+      if (typeof data !== 'object' || data === null) {
+        console.warn('Invalid response data structure')
+        return {
+          success: true,
+          message: 'Success',
+          data: data as T
+        }
+      }
+
+      // If response doesn't have expected structure, wrap it
+      if (!('success' in data)) {
+        return {
+          success: true,
+          message: 'Success',
+          data: data as T
+        }
+      }
+
+      return data as ApiResponse<T>
+    } catch (error) {
+      console.error(`❌ Request error:`, error)
+      if (error instanceof Error) {
+        throw error
+      }
+      throw new Error('Network error occurred')
+    }
   }
 
-  // Generic HTTP methods
+  // Generic HTTP methods with better error handling
   async get<T>(url: string, params?: any): Promise<ApiResponse<T>> {
     let finalUrl = url
     if (params) {
@@ -249,13 +269,6 @@ class FetchApiClient {
     })
   }
 
-  async patch<T>(url: string, data?: any): Promise<ApiResponse<T>> {
-    return this.makeRequest<T>(url, {
-      method: 'PATCH',
-      body: data ? JSON.stringify(data) : undefined,
-    })
-  }
-
   async delete<T>(url: string, data?: any): Promise<ApiResponse<T>> {
     return this.makeRequest<T>(url, {
       method: 'DELETE',
@@ -267,50 +280,73 @@ class FetchApiClient {
   async adminLogin(email: string, password: string): Promise<ApiResponse<LoginResponse>> {
     console.log('🔄 Starting admin login...')
     
-    // Clear any existing auth data first
     this.clearAuthData()
     
-    const response = await fetch(`${this.baseURL}/api/v1/admin/public/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email,
-        password,
+    try {
+      const response = await fetch(`${this.baseURL}/api/v1/admin/public/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        })
       })
-    })
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.message || `Login failed: ${response.status}`)
-    }
+      let data: any
+      try {
+        data = await response.json()
+      } catch (parseError) {
+        console.error('Failed to parse login response:', parseError)
+        throw new Error('Invalid server response')
+      }
 
-    const data = await response.json()
-    console.log('✅ Login API call successful')
-    
-    // Store tokens if login successful
-    if (data.success && data.data) {
-      const loginData = data.data as LoginResponse
-      const { access_token, refresh_token, user } = loginData
+      if (!response.ok) {
+        console.error(`Login failed: ${response.status}`, data)
+        throw new Error(data.message || `Login failed: ${response.status}`)
+      }
+
+      console.log('✅ Login API call successful')
+      
+      // Handle different response structures from Go API
+      let loginData: LoginResponse
+      
+      if (data.data) {
+        // Standard API response format
+        loginData = data.data
+      } else if (data.access_token) {
+        // Direct token response
+        loginData = data
+      } else {
+        throw new Error('Invalid login response format')
+      }
       
       if (typeof window !== 'undefined') {
-        if (access_token) {
-          this.setStoredToken(access_token)
+        if (loginData.access_token) {
+          this.setStoredToken(loginData.access_token)
           console.log('✅ Access token stored')
         }
-        if (refresh_token) {
-          localStorage.setItem('admin_refresh_token', refresh_token)
+        if (loginData.refresh_token) {
+          localStorage.setItem('admin_refresh_token', loginData.refresh_token)
           console.log('✅ Refresh token stored')
         }
-        if (user) {
-          localStorage.setItem('admin_user', JSON.stringify(user))
+        if (loginData.user) {
+          localStorage.setItem('admin_user', JSON.stringify(loginData.user))
           console.log('✅ User data stored')
         }
       }
+      
+      return {
+        success: true,
+        message: 'Login successful',
+        data: loginData
+      }
+    } catch (error) {
+      console.error('❌ Login error:', error)
+      this.clearAuthData()
+      throw error
     }
-    
-    return data as ApiResponse<LoginResponse>
   }
 
   async adminLogout(): Promise<void> {
@@ -335,50 +371,27 @@ class FetchApiClient {
     }
   }
 
-  async refreshToken(): Promise<ApiResponse<RefreshResponse>> {
-    console.log('🔄 Manual token refresh requested...')
-    try {
-      const newToken = await this.refreshTokenIfNeeded()
-      return { 
-        success: true, 
-        message: 'Token refreshed successfully',
-        data: { access_token: newToken } as RefreshResponse 
-      }
-    } catch (error) {
-      console.error('❌ Manual token refresh failed:', error)
-      throw error
-    }
-  }
-
-  async adminForgotPassword(email: string) {
-    return this.post('/api/v1/admin/public/auth/forgot-password', { email })
-  }
-
-  async adminResetPassword(token: string, newPassword: string, confirmPassword: string) {
-    return this.post('/api/v1/admin/public/auth/reset-password', { 
-      token, 
-      new_password: newPassword,
-      confirm_password: confirmPassword
-    })
-  }
-
-  // ==================== PUBLIC ADMIN ROUTES ====================
-  async getPublicSystemStatus() {
-    return this.get('/api/v1/admin/public/status')
-  }
-
-  async getPublicHealthCheck() {
-    return this.get('/api/v1/admin/public/health')
-  }
-
   // ==================== DASHBOARD ====================
-  async getDashboard() {
-    return this.get('/api/v1/admin/dashboard')
-  }
-
   async getDashboardStats(): Promise<ApiResponse<DashboardStats>> {
     console.log('🔄 Fetching dashboard stats...')
-    return this.get<DashboardStats>('/api/v1/admin/dashboard/stats')
+    try {
+      const response = await this.get<DashboardStats>('/api/v1/admin/dashboard/stats')
+      
+      // Ensure we have valid data
+      if (!response || !response.data) {
+        console.warn('Dashboard stats response is null or invalid')
+        return {
+          success: false,
+          message: 'No dashboard data available',
+          data: {} as DashboardStats
+        }
+      }
+      
+      return response
+    } catch (error) {
+      console.error('❌ Dashboard stats error:', error)
+      throw error
+    }
   }
 
   // ==================== USER MANAGEMENT ====================
@@ -392,24 +405,36 @@ class FetchApiClient {
     search?: string
     date_from?: string
     date_to?: string
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/users', params)
-  }
-
-  async searchUsers(params?: {
-    query?: string
-    limit?: number
-    skip?: number
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/users/search', params)
+  }): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/users', params)
+      
+      // Handle both direct array and paginated response
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Users fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get users error:', error)
+      throw error
+    }
   }
 
   async getUser(id: string) {
     return this.get(`/api/v1/admin/users/${id}`)
-  }
-
-  async getUserStats(id: string) {
-    return this.get(`/api/v1/admin/users/${id}/stats`)
   }
 
   async updateUserStatus(id: string, data: { 
@@ -418,14 +443,6 @@ class FetchApiClient {
     reason?: string 
   }) {
     return this.put(`/api/v1/admin/users/${id}/status`, data)
-  }
-
-  async verifyUser(id: string) {
-    return this.put(`/api/v1/admin/users/${id}/verify`)
-  }
-
-  async deleteUser(id: string, reason: string) {
-    return this.delete(`/api/v1/admin/users/${id}`, { reason })
   }
 
   async bulkUserAction(data: { 
@@ -437,40 +454,36 @@ class FetchApiClient {
     return this.post('/api/v1/admin/users/bulk/actions', data)
   }
 
-  async exportUsers(params?: {
-    format?: string
-    date_from?: string
-    date_to?: string
-  }) {
-    return this.get('/api/v1/admin/users/export', params)
-  }
-
   // ==================== POST MANAGEMENT ====================
-  async getPosts(params?: {
-    page?: number
-    limit?: number
-    status?: string
-    sort_by?: string
-    user_id?: string
-    search?: string
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/posts', params)
-  }
-
-  async searchPosts(params?: {
-    query?: string
-    limit?: number
-    skip?: number
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/posts/search', params)
+  async getPosts(params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/posts', params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Posts fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get posts error:', error)
+      throw error
+    }
   }
 
   async getPost(id: string) {
     return this.get(`/api/v1/admin/posts/${id}`)
-  }
-
-  async getPostStats(id: string) {
-    return this.get(`/api/v1/admin/posts/${id}/stats`)
   }
 
   async hidePost(id: string, reason: string) {
@@ -489,59 +502,67 @@ class FetchApiClient {
     return this.post('/api/v1/admin/posts/bulk/actions', data)
   }
 
-  async exportPosts(params?: {
-    format?: string
-    date_from?: string
-  }) {
-    return this.get('/api/v1/admin/posts/export', params)
-  }
-
-  // ==================== COMMENT MANAGEMENT ====================
-  async getComments(params?: {
-    page?: number
-    limit?: number
-    status?: string
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/comments', params)
-  }
-
-  async getComment(id: string) {
-    return this.get(`/api/v1/admin/comments/${id}`)
-  }
-
-  async hideComment(id: string, reason: string) {
-    return this.put(`/api/v1/admin/comments/${id}/hide`, { reason })
-  }
-
-  async deleteComment(id: string, reason: string) {
-    return this.delete(`/api/v1/admin/comments/${id}`, { reason })
-  }
-
-  async bulkCommentAction(data: { 
-    comment_ids: string[]
-    action: string
-    reason?: string 
-  }) {
-    return this.post('/api/v1/admin/comments/bulk/actions', data)
-  }
-
   // ==================== GROUP MANAGEMENT ====================
-  async getGroups(params?: {
-    page?: number
-    limit?: number
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/groups', params)
+  async getGroups(params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/groups', params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Groups fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get groups error:', error)
+      throw error
+    }
   }
 
   async getGroup(id: string) {
     return this.get(`/api/v1/admin/groups/${id}`)
   }
 
-  async getGroupMembers(id: string, params?: any) {
-    return this.get<PaginatedResponse>(`/api/v1/admin/groups/${id}/members`, params)
+  async getGroupMembers(id: string, params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>(`/api/v1/admin/groups/${id}/members`, params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Group members fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get group members error:', error)
+      throw error
+    }
   }
 
   async updateGroupStatus(id: string, data: { 
+    is_active?: boolean
     status?: string
     reason?: string 
   }) {
@@ -560,218 +581,32 @@ class FetchApiClient {
     return this.post('/api/v1/admin/groups/bulk/actions', data)
   }
 
-  // ==================== EVENT MANAGEMENT ====================
-  async getEvents(params?: {
-    page?: number
-    limit?: number
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/events', params)
-  }
-
-  async getEvent(id: string) {
-    return this.get(`/api/v1/admin/events/${id}`)
-  }
-
-  async getEventAttendees(id: string, params?: any) {
-    return this.get<PaginatedResponse>(`/api/v1/admin/events/${id}/attendees`, params)
-  }
-
-  async updateEventStatus(id: string, data: { 
-    status: string
-    reason?: string 
-  }) {
-    return this.put(`/api/v1/admin/events/${id}/status`, data)
-  }
-
-  async deleteEvent(id: string, reason: string) {
-    return this.delete(`/api/v1/admin/events/${id}`, { reason })
-  }
-
-  async bulkEventAction(data: { 
-    event_ids: string[]
-    action: string
-    reason?: string 
-  }) {
-    return this.post('/api/v1/admin/events/bulk/actions', data)
-  }
-
-  // ==================== STORY MANAGEMENT ====================
-  async getStories(params?: {
-    page?: number
-    limit?: number
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/stories', params)
-  }
-
-  async getStory(id: string) {
-    return this.get(`/api/v1/admin/stories/${id}`)
-  }
-
-  async hideStory(id: string, reason: string) {
-    return this.put(`/api/v1/admin/stories/${id}/hide`, { reason })
-  }
-
-  async deleteStory(id: string, reason: string) {
-    return this.delete(`/api/v1/admin/stories/${id}`, { reason })
-  }
-
-  async bulkStoryAction(data: { 
-    story_ids: string[]
-    action: string
-    reason?: string 
-  }) {
-    return this.post('/api/v1/admin/stories/bulk/actions', data)
-  }
-
-  // ==================== MESSAGE MANAGEMENT ====================
-  async getMessages(params?: {
-    page?: number
-    limit?: number
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/messages', params)
-  }
-
-  async getMessage(id: string) {
-    return this.get(`/api/v1/admin/messages/${id}`)
-  }
-
-  async getConversations(params?: {
-    page?: number
-    limit?: number
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/messages/conversations', params)
-  }
-
-  async getConversation(id: string) {
-    return this.get(`/api/v1/admin/messages/conversations/${id}`)
-  }
-
-  async deleteMessage(id: string, reason: string) {
-    return this.delete(`/api/v1/admin/messages/${id}`, { reason })
-  }
-
-  async bulkMessageAction(data: { 
-    message_ids: string[]
-    action: string
-    reason?: string 
-  }) {
-    return this.post('/api/v1/admin/messages/bulk/actions', data)
-  }
-
-  // ==================== REPORT MANAGEMENT ====================
-  async getReports(params?: {
-    status?: string
-    target_type?: string
-    limit?: number
-    skip?: number
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/reports', params)
-  }
-
-  async getReport(id: string) {
-    return this.get(`/api/v1/admin/reports/${id}`)
-  }
-
-  async updateReportStatus(id: string, data: {
-    status?: string
-    notes?: string
-  }) {
-    return this.put(`/api/v1/admin/reports/${id}/status`, data)
-  }
-
-  async assignReport(id: string, assigneeId: string) {
-    return this.put(`/api/v1/admin/reports/${id}/assign`, { assigned_to: assigneeId })
-  }
-
-  async resolveReport(id: string, data: { 
-    resolution: string
-    note?: string 
-  }) {
-    return this.post(`/api/v1/admin/reports/${id}/resolve`, data)
-  }
-
-  async rejectReport(id: string, data: { 
-    note: string 
-  }) {
-    return this.post(`/api/v1/admin/reports/${id}/reject`, data)
-  }
-
-  async bulkReportAction(data: { 
-    report_ids: string[]
-    action: string
-    resolution?: string
-    reason?: string 
-  }) {
-    return this.post('/api/v1/admin/reports/bulk/actions', data)
-  }
-
-  async getReportStats() {
-    return this.get('/api/v1/admin/reports/stats')
-  }
-
-  async getReportSummary() {
-    return this.get('/api/v1/admin/reports/stats/summary')
-  }
-
-  // ==================== FOLLOW MANAGEMENT ====================
-  async getFollows(params?: {
-    page?: number
-    limit?: number
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/follows', params)
-  }
-
-  async getFollow(id: string) {
-    return this.get(`/api/v1/admin/follows/${id}`)
-  }
-
-  async deleteFollow(id: string, reason: string) {
-    return this.delete(`/api/v1/admin/follows/${id}`, { reason })
-  }
-
-  async getRelationships(userId: string) {
-    return this.get('/api/v1/admin/follows/relationships', { user_id: userId })
-  }
-
-  async bulkFollowAction(data: { 
-    follow_ids: string[]
-    action: string
-    reason?: string 
-  }) {
-    return this.post('/api/v1/admin/follows/bulk/actions', data)
-  }
-
-  // ==================== LIKE MANAGEMENT ====================
-  async getLikes(params?: {
-    page?: number
-    limit?: number
-    target_type?: string
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/likes', params)
-  }
-
-  async getLikeStats() {
-    return this.get('/api/v1/admin/likes/stats')
-  }
-
-  async deleteLike(id: string, reason: string) {
-    return this.delete(`/api/v1/admin/likes/${id}`, { reason })
-  }
-
-  async bulkLikeAction(data: { 
-    like_ids: string[]
-    action: string
-    reason?: string 
-  }) {
-    return this.post('/api/v1/admin/likes/bulk/actions', data)
-  }
-
   // ==================== HASHTAG MANAGEMENT ====================
-  async getHashtags(params?: {
-    page?: number
-    limit?: number
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/hashtags', params)
+  async getHashtags(params?: any): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/hashtags', params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Hashtags fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get hashtags error:', error)
+      throw error
+    }
   }
 
   async getHashtag(id: string) {
@@ -802,465 +637,124 @@ class FetchApiClient {
     return this.post('/api/v1/admin/hashtags/bulk/actions', data)
   }
 
-  // ==================== MENTION MANAGEMENT ====================
-  async getMentions(params?: {
-    page?: number
-    limit?: number
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/mentions', params)
-  }
-
-  async getMention(id: string) {
-    return this.get(`/api/v1/admin/mentions/${id}`)
-  }
-
-  async deleteMention(id: string, reason: string) {
-    return this.delete(`/api/v1/admin/mentions/${id}`, { reason })
-  }
-
-  async bulkMentionAction(data: { 
-    mention_ids: string[]
-    action: string
-    reason?: string 
-  }) {
-    return this.post('/api/v1/admin/mentions/bulk/actions', data)
-  }
-
-  // ==================== MEDIA MANAGEMENT ====================
-  async getMedia(params?: {
-    page?: number
-    limit?: number
-    type?: string
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/media', params)
-  }
-
-  async getMediaItem(id: string) {
-    return this.get(`/api/v1/admin/media/${id}`)
-  }
-
-  async getMediaStats() {
-    return this.get('/api/v1/admin/media/stats')
-  }
-
-  async moderateMedia(id: string, data: { 
-    action: string
-    reason?: string 
-  }) {
-    return this.put(`/api/v1/admin/media/${id}/moderate`, data)
-  }
-
-  async deleteMedia(id: string, reason: string) {
-    return this.delete(`/api/v1/admin/media/${id}`, { reason })
-  }
-
-  async bulkMediaAction(data: { 
-    media_ids: string[]
-    action: string
-    reason?: string 
-  }) {
-    return this.post('/api/v1/admin/media/bulk/actions', data)
-  }
-
-  async getStorageStats() {
-    return this.get('/api/v1/admin/media/storage/stats')
-  }
-
-  async cleanupStorage(data: { 
-    cleanup_type?: string
-    older_than_days: number
-    media_type?: string 
-  }) {
-    return this.post('/api/v1/admin/media/storage/cleanup', data)
-  }
-
-  // ==================== NOTIFICATION MANAGEMENT ====================
-  async getNotifications(params?: {
-    page?: number
-    limit?: number
-  }) {
-    return this.get<PaginatedResponse>('/api/v1/admin/notifications', params)
-  }
-
-  async getNotification(id: string) {
-    return this.get(`/api/v1/admin/notifications/${id}`)
-  }
-
-  async sendNotificationToUsers(data: {
-    user_ids: string[]
-    title: string
-    message: string
-    type: string
-    data?: any
-  }) {
-    return this.post('/api/v1/admin/notifications/send', data)
-  }
-
-  async broadcastNotification(data: {
-    title: string
-    message: string
-    type: string
-    target_audience?: string
-    data?: any
-  }) {
-    return this.post('/api/v1/admin/notifications/broadcast', data)
-  }
-
-  async getNotificationStats() {
-    return this.get('/api/v1/admin/notifications/stats')
-  }
-
-  async deleteNotification(id: string, reason?: string) {
-    return this.delete(`/api/v1/admin/notifications/${id}`, { reason })
-  }
-
-  async bulkNotificationAction(data: { 
-    notification_ids: string[]
-    action: string
-  }) {
-    return this.post('/api/v1/admin/notifications/bulk/actions', data)
-  }
-
-  // ==================== ANALYTICS ====================
-  async getUserAnalytics(params?: { 
-    period?: string
-    date_from?: string
-    date_to?: string 
-  }) {
-    return this.get('/api/v1/admin/analytics/users', params)
-  }
-
-  async getContentAnalytics(params?: { period?: string }) {
-    return this.get('/api/v1/admin/analytics/content', params)
-  }
-
-  async getEngagementAnalytics(params?: { period?: string }) {
-    return this.get('/api/v1/admin/analytics/engagement', params)
-  }
-
-  async getGrowthAnalytics(params?: { period?: string }) {
-    return this.get('/api/v1/admin/analytics/growth', params)
-  }
-
-  async getDemographicAnalytics() {
-    return this.get('/api/v1/admin/analytics/demographics')
-  }
-
-  async getRevenueAnalytics(params?: { period?: string }) {
-    return this.get('/api/v1/admin/analytics/revenue', params)
-  }
-
-  async getCustomReport(params?: { 
-    report_type?: string
-    date_range?: string 
-  }) {
-    return this.get('/api/v1/admin/analytics/reports/custom', params)
-  }
-
-  async getRealtimeAnalytics() {
-    return this.get('/api/v1/admin/analytics/realtime')
-  }
-
-  async getLiveStats() {
-    return this.get('/api/v1/admin/analytics/live-stats')
-  }
-
-  // ==================== SYSTEM MANAGEMENT ====================
-  async getSystemHealth() {
-    return this.get('/api/v1/admin/system/health')
-  }
-
-  async getSystemInfo() {
-    return this.get('/api/v1/admin/system/info')
-  }
-
-  async getSystemLogs(params?: {
-    level?: string
-    limit?: number
-    date_from?: string
-  }) {
-    return this.get('/api/v1/admin/system/logs', params)
-  }
-
-  async getPerformanceMetrics() {
-    return this.get('/api/v1/admin/system/performance')
-  }
-
-  async getDatabaseStats() {
-    return this.get('/api/v1/admin/system/database/stats')
-  }
-
-  async getCacheStats() {
-    return this.get('/api/v1/admin/system/cache/stats')
-  }
-
-  // Super Admin only operations
-  async clearCache(cacheType?: string) {
-    return this.post('/api/v1/admin/system/cache/clear', { cache_type: cacheType })
-  }
-
-  async warmCache(cacheTypes?: string[]) {
-    return this.post('/api/v1/admin/system/cache/warm', { cache_types: cacheTypes })
-  }
-
-  async enableMaintenanceMode(data: { 
-    message?: string
-    estimated_duration?: string 
-  }) {
-    return this.post('/api/v1/admin/system/maintenance/enable', data)
-  }
-
-  async disableMaintenanceMode() {
-    return this.post('/api/v1/admin/system/maintenance/disable')
-  }
-
-  async backupDatabase(data: { 
-    backup_type?: string
-    description?: string
-  }) {
-    return this.post('/api/v1/admin/system/database/backup', data)
-  }
-
-  async getDatabaseBackups() {
-    return this.get('/api/v1/admin/system/database/backups')
-  }
-
-  async restoreDatabase(data: { 
-    backup_id: string
-    confirm: boolean
-  }) {
-    return this.post('/api/v1/admin/system/database/restore', data)
-  }
-
-  async optimizeDatabase() {
-    return this.post('/api/v1/admin/system/database/optimize')
-  }
-
-  // ==================== CONFIGURATION MANAGEMENT (Super Admin) ====================
-  async getConfiguration() {
-    return this.get('/api/v1/admin/config')
-  }
-
-  async updateConfiguration(data: {
-    max_post_length?: number
-    max_file_size?: number
-    registration_enabled?: boolean
-    maintenance_mode?: boolean
-  }) {
-    return this.put('/api/v1/admin/config', data)
-  }
-
-  async getConfigurationHistory(params?: { limit?: number }) {
-    return this.get('/api/v1/admin/config/history', params)
-  }
-
-  async rollbackConfiguration(configVersion: string) {
-    return this.post('/api/v1/admin/config/rollback', { config_version: configVersion })
-  }
-
-  async validateConfiguration() {
-    return this.get('/api/v1/admin/config/validate')
-  }
-
-  async getFeatureFlags() {
-    return this.get('/api/v1/admin/config/features')
-  }
-
-  async updateFeatureFlags(data: {
-    stories_enabled?: boolean
-    groups_enabled?: boolean
-    live_streaming?: boolean
-  }) {
-    return this.put('/api/v1/admin/config/features', data)
-  }
-
-  async toggleFeature(feature: string, enabled?: boolean) {
-    if (enabled !== undefined) {
-      return this.put(`/api/v1/admin/config/features/${feature}/toggle`, { enabled })
-    }
-    return this.put(`/api/v1/admin/config/features/${feature}/toggle`)
-  }
-
-  async getRateLimits() {
-    return this.get('/api/v1/admin/config/rate-limits')
-  }
-
-  async updateRateLimits(data: {
-    posts?: { requests: number; window: string }
-    comments?: { requests: number; window: string }
-    likes?: { requests: number; window: string }
-  }) {
-    return this.put('/api/v1/admin/config/rate-limits', data)
-  }
-
-  // ==================== WEBSOCKET CONNECTIONS ====================
-  connectWebSocket(endpoint: string, onMessage?: (data: any) => void): WebSocket | null {
+  // ==================== STORY MANAGEMENT ====================
+  async getStories(params?: any): Promise<PaginatedResponse> {
     try {
-      const token = this.getStoredToken()
-      if (!token) {
-        console.error('No token available for WebSocket connection')
-        return null
-      }
-
-      const wsUrl = `${process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080'}/api/v1/admin/ws/${endpoint}`
+      const response = await this.get<any>('/api/v1/admin/stories', params)
       
-      const ws = new WebSocket(wsUrl)
-      
-      ws.onopen = () => {
-        console.log(`WebSocket connected: ${endpoint}`)
-        // Send auth token after connection
-        ws.send(JSON.stringify({ type: 'auth', token }))
-      }
-      
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data)
-          onMessage?.(data)
-        } catch (error) {
-          console.error('WebSocket message parse error:', error)
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Stories fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
         }
       }
       
-      ws.onerror = (error) => {
-        console.error(`WebSocket error on ${endpoint}:`, error)
-      }
-      
-      ws.onclose = () => {
-        console.log(`WebSocket disconnected: ${endpoint}`)
-        this.wsConnections.delete(endpoint)
-      }
-      
-      this.wsConnections.set(endpoint, ws)
-      return ws
+      return response as PaginatedResponse
     } catch (error) {
-      console.error('WebSocket connection error:', error)
-      return null
+      console.error('❌ Get stories error:', error)
+      throw error
     }
   }
 
-  // Connect to dashboard WebSocket
-  connectDashboardWebSocket(onMessage?: (data: any) => void) {
-    return this.connectWebSocket('dashboard', onMessage)
+  async getStory(id: string) {
+    return this.get(`/api/v1/admin/stories/${id}`)
   }
 
-  // Connect to monitoring WebSocket
-  connectMonitoringWebSocket(onMessage?: (data: any) => void) {
-    return this.connectWebSocket('monitoring', onMessage)
+  async hideStory(id: string, reason: string) {
+    return this.put(`/api/v1/admin/stories/${id}/hide`, { reason })
   }
 
-  // Connect to moderation WebSocket
-  connectModerationWebSocket(onMessage?: (data: any) => void) {
-    return this.connectWebSocket('moderation', onMessage)
+  async deleteStory(id: string, reason: string) {
+    return this.delete(`/api/v1/admin/stories/${id}`, { reason })
   }
 
-  // Connect to activities WebSocket
-  connectActivitiesWebSocket(onMessage?: (data: any) => void) {
-    return this.connectWebSocket('activities', onMessage)
+  async bulkStoryAction(data: { 
+    story_ids: string[]
+    action: string
+    reason?: string 
+  }) {
+    return this.post('/api/v1/admin/stories/bulk/actions', data)
   }
 
-  disconnectWebSocket(endpoint: string) {
-    const ws = this.wsConnections.get(endpoint)
-    if (ws) {
-      ws.close()
-      this.wsConnections.delete(endpoint)
-    }
-  }
-
-  disconnectAllWebSockets() {
-    this.wsConnections.forEach((ws, endpoint) => {
-      ws.close()
-    })
-    this.wsConnections.clear()
-  }
-
-  // ==================== FILE UPLOAD ====================
-  async uploadFile(file: File, type: 'avatar' | 'media' | 'document' = 'media'): Promise<ApiResponse> {
-    const token = this.getStoredToken()
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('type', type)
-
-    const response = await fetch(`${this.baseURL}/api/v1/admin/upload`, {
-      method: 'POST',
-      headers: {
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
-      body: formData,
-    })
-
-    if (!response.ok) {
-      throw new Error(`Upload failed: ${response.status}`)
-    }
-
-    return response.json()
-  }
-
-  // ==================== EXPORT UTILITIES ====================
-  async exportData(type: string, params?: any): Promise<Blob> {
-    const token = this.getStoredToken()
-    let url = `${this.baseURL}/api/v1/admin/export/${type}`
-    
-    if (params) {
-      const searchParams = new URLSearchParams()
-      Object.keys(params).forEach(key => {
-        if (params[key] !== undefined && params[key] !== null) {
-          searchParams.append(key, params[key].toString())
+  // ==================== REPORT MANAGEMENT ====================
+  async getReports(params?: {
+    status?: string
+    target_type?: string
+    limit?: number
+    skip?: number
+    page?: number
+  }): Promise<PaginatedResponse> {
+    try {
+      const response = await this.get<any>('/api/v1/admin/reports', params)
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Reports fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
         }
-      })
-      if (searchParams.toString()) {
-        url += '?' + searchParams.toString()
       }
+      
+      return response as PaginatedResponse
+    } catch (error) {
+      console.error('❌ Get reports error:', error)
+      throw error
     }
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error(`Export failed: ${response.status}`)
-    }
-
-    return response.blob()
   }
 
-  downloadFile(blob: Blob, filename: string) {
-    if (typeof window === 'undefined') return
-
-    const url = window.URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = filename
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    window.URL.revokeObjectURL(url)
+  async getReport(id: string) {
+    return this.get(`/api/v1/admin/reports/${id}`)
   }
 
-  // ==================== HEALTH CHECK METHODS ====================
-  async healthCheck() {
-    return this.get('/health')
+  async resolveReport(id: string, data: { 
+    resolution: string
+    note?: string 
+  }) {
+    return this.post(`/api/v1/admin/reports/${id}/resolve`, data)
   }
 
-  async apiInfo() {
-    return this.get('/api/v1')
+  async rejectReport(id: string, data: { 
+    note: string 
+  }) {
+    return this.post(`/api/v1/admin/reports/${id}/reject`, data)
+  }
+
+  async bulkReportAction(data: { 
+    report_ids: string[]
+    action: string
+    resolution?: string
+    reason?: string 
+  }) {
+    return this.post('/api/v1/admin/reports/bulk/actions', data)
+  }
+
+  async getReportStats() {
+    return this.get('/api/v1/admin/reports/stats')
   }
 
   // ==================== UTILITY METHODS ====================
   
-  // Check if user is online
-  isOnline(): boolean {
-    return typeof window !== 'undefined' ? navigator.onLine : true
-  }
-
-  // Get current token
   getCurrentToken(): string | null {
     return this.getStoredToken()
   }
 
-  // Get current user
   getCurrentUser(): any | null {
     if (typeof window === 'undefined') return null
     try {
@@ -1271,22 +765,10 @@ class FetchApiClient {
     }
   }
 
-  // Check if user has permission
-  hasPermission(permission: string): boolean {
-    const user = this.getCurrentUser()
-    if (!user) return false
-    
-    // Super admin has all permissions
-    if (user.role === 'super_admin') return true
-    
-    // Check specific permission
-    return user.permissions?.includes(permission) || 
-           user.permissions?.includes('admin.*') ||
-           user.permissions?.includes('*') || 
-           false
+  isOnline(): boolean {
+    return typeof window !== 'undefined' ? navigator.onLine : true
   }
 
-  // Get API base URL
   getBaseUrl(): string {
     return this.baseURL
   }

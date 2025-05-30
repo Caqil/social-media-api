@@ -60,9 +60,10 @@ func requireSuperAdminRole() gin.HandlerFunc {
 
 func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, authMiddleware *middleware.AuthMiddleware) {
 	admin := router.Group("/api/v1/admin")
-	admin.Use(authMiddleware.RequireAuth()) // Same auth that works for users
-	admin.Use(requireAdminRole())           // Simple role check
-	admin.Use(middleware.Logger())          // Request logging
+	admin.Use(authMiddleware.RequireAuth())
+	admin.Use(middleware.RequireAdmin()) // Same auth that works for users
+	admin.Use(requireAdminRole())        // Simple role check
+	admin.Use(middleware.Logger())       // Request logging
 
 	// Dashboard
 	admin.GET("/dashboard", adminHandler.GetDashboard)

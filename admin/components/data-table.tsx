@@ -1,4 +1,4 @@
-// components/data-table-enhanced.tsx
+// components/enhanced-data-table.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -14,7 +14,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,9 +25,19 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   IconChevronLeft,
   IconChevronRight,
+  IconChevronsLeft,
+  IconChevronsRight,
   IconDotsVertical,
   IconSearch,
   IconFilter,
@@ -32,6 +45,11 @@ import {
   IconRefresh,
   IconSortAscending,
   IconSortDescending,
+  IconColumns,
+  IconSettings,
+  IconX,
+  IconEye,
+  IconEyeOff,
 } from "@tabler/icons-react";
 import { TableProps, TableColumn } from "@/types/admin";
 
@@ -45,6 +63,9 @@ export interface DataTableProps extends TableProps {
   showSearch?: boolean;
   showRefresh?: boolean;
   showExport?: boolean;
+  showColumnToggle?: boolean;
+  showDensityToggle?: boolean;
+  customActions?: React.ReactNode;
 }
 
 export function DataTable({
@@ -67,14 +88,24 @@ export function DataTable({
   showSearch = true,
   showRefresh = true,
   showExport = true,
+  showColumnToggle = true,
+  showDensityToggle = true,
+  customActions,
 }: DataTableProps) {
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [filters, setFilters] = useState<Record<string, any>>({});
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(
+    columns.map((col) => col.key)
+  );
+  const [density, setDensity] = useState<
+    "compact" | "comfortable" | "spacious"
+  >("comfortable");
+  const [showFilters, setShowFilters] = useState(false);
 
-  // Handle search
+  // Handle search with debounce
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (onFilter) {
@@ -119,98 +150,249 @@ export function DataTable({
     }
   };
 
+  // Handle column visibility toggle
+  const toggleColumnVisibility = (columnKey: string) => {
+    setVisibleColumns((prev) =>
+      prev.includes(columnKey)
+        ? prev.filter((key) => key !== columnKey)
+        : [...prev, columnKey]
+    );
+  };
+
+  // Handle filter change
+  const handleFilterChange = (key: string, value: any) => {
+    const newFilters = { ...filters };
+    if (value === "" || value === null || value === undefined) {
+      delete newFilters[key];
+    } else {
+      newFilters[key] = value;
+    }
+    setFilters(newFilters);
+  };
+
+  // Clear all filters
+  const clearFilters = () => {
+    setFilters({});
+    setSearchTerm("");
+  };
+
+  // Get visible columns
+  const getVisibleColumns = () => {
+    return columns.filter((col) => visibleColumns.includes(col.key));
+  };
+
+  // Get filterable columns
+  const getFilterableColumns = () => {
+    return columns.filter((col) => col.filterable);
+  };
+
+  // Get density classes
+  const getDensityClasses = () => {
+    switch (density) {
+      case "compact":
+        return "text-xs";
+      case "spacious":
+        return "text-base py-4";
+      default:
+        return "text-sm py-2";
+    }
+  };
+
+  // Active filters count
+  const activeFiltersCount = Object.keys(filters).length + (searchTerm ? 1 : 0);
+
   return (
-    <Card>
+    <Card className="w-full">
       {(title || description) && (
-        <CardHeader>
-          {title && <CardTitle>{title}</CardTitle>}
-          {description && (
-            <p className="text-sm text-muted-foreground">{description}</p>
-          )}
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              {title && <CardTitle className="text-xl">{title}</CardTitle>}
+              {description && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  {description}
+                </p>
+              )}
+            </div>
+            {customActions}
+          </div>
         </CardHeader>
       )}
 
-      <CardContent>
+      <CardContent className="p-0">
         {/* Toolbar */}
-        <div className="flex items-center justify-between gap-4 mb-4">
-          <div className="flex items-center gap-2 flex-1">
-            {showSearch && (
-              <div className="relative max-w-sm">
-                <IconSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder={searchPlaceholder}
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            )}
+        <div className="p-4 border-b bg-muted/20">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <div className="flex items-center gap-2 flex-1">
+              {/* Search */}
+              {showSearch && (
+                <div className="relative max-w-sm">
+                  <IconSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder={searchPlaceholder}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+              )}
 
-            {/* Filter Button */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <IconFilter className="h-4 w-4 mr-2" />
-                  Filter
+              {/* Filters Toggle */}
+              <Button
+                variant={showFilters ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowFilters(!showFilters)}
+              >
+                <IconFilter className="h-4 w-4 mr-2" />
+                Filters
+                {activeFiltersCount > 0 && (
+                  <Badge variant="secondary" className="ml-2">
+                    {activeFiltersCount}
+                  </Badge>
+                )}
+              </Button>
+
+              {/* Clear Filters */}
+              {activeFiltersCount > 0 && (
+                <Button variant="ghost" size="sm" onClick={clearFilters}>
+                  <IconX className="h-4 w-4 mr-2" />
+                  Clear
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                {columns
-                  .filter((col) => col.filterable)
-                  .map((col) => (
-                    <DropdownMenuItem key={col.key}>
-                      {col.label}
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Bulk Actions */}
+              {selectedRows.length > 0 && bulkActions.length > 0 && (
+                <>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        Actions ({selectedRows.length})
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      {bulkActions.map((action) => (
+                        <DropdownMenuItem
+                          key={action.action}
+                          onClick={() => handleBulkAction(action.action)}
+                          className={
+                            action.variant === "destructive"
+                              ? "text-red-600"
+                              : ""
+                          }
+                        >
+                          {action.label}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Separator orientation="vertical" className="h-4" />
+                </>
+              )}
+
+              {/* Column Toggle */}
+              {showColumnToggle && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <IconColumns className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {columns.map((column) => (
+                      <DropdownMenuCheckboxItem
+                        key={column.key}
+                        checked={visibleColumns.includes(column.key)}
+                        onCheckedChange={() =>
+                          toggleColumnVisibility(column.key)
+                        }
+                      >
+                        {column.label}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+
+              {/* Density Toggle */}
+              {showDensityToggle && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <IconSettings className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>Display Density</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setDensity("compact")}>
+                      Compact
                     </DropdownMenuItem>
-                  ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    <DropdownMenuItem onClick={() => setDensity("comfortable")}>
+                      Comfortable
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDensity("spacious")}>
+                      Spacious
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+
+              {/* Refresh */}
+              {showRefresh && (
+                <Button variant="outline" size="sm" onClick={onRefresh}>
+                  <IconRefresh className="h-4 w-4" />
+                </Button>
+              )}
+
+              {/* Export */}
+              {showExport && (
+                <Button variant="outline" size="sm" onClick={onExport}>
+                  <IconDownload className="h-4 w-4 mr-2" />
+                  Export
+                </Button>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Bulk Actions */}
-            {selectedRows.length > 0 && bulkActions.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    Actions ({selectedRows.length})
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  {bulkActions.map((action) => (
-                    <DropdownMenuItem
-                      key={action.action}
-                      onClick={() => handleBulkAction(action.action)}
-                      className={
-                        action.variant === "destructive" ? "text-red-600" : ""
-                      }
-                    >
-                      {action.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-
-            {showRefresh && (
-              <Button variant="outline" size="sm" onClick={onRefresh}>
-                <IconRefresh className="h-4 w-4" />
-              </Button>
-            )}
-
-            {showExport && (
-              <Button variant="outline" size="sm" onClick={onExport}>
-                <IconDownload className="h-4 w-4 mr-2" />
-                Export
-              </Button>
-            )}
-          </div>
+          {/* Advanced Filters */}
+          {showFilters && (
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4 bg-background rounded-lg border">
+              {getFilterableColumns().map((column) => (
+                <div key={column.key} className="space-y-2">
+                  <label className="text-sm font-medium">{column.label}</label>
+                  <Select
+                    value={filters[column.key] || ""}
+                    onValueChange={(value) =>
+                      handleFilterChange(column.key, value)
+                    }
+                  >
+                    <SelectTrigger className="h-8">
+                      <SelectValue
+                        placeholder={`Filter by ${column.label.toLowerCase()}`}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">All</SelectItem>
+                      {/* This would be populated with actual filter options */}
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Table */}
-        <div className="border rounded-lg">
+        <div className="relative overflow-auto">
           <Table>
             <TableHeader>
-              <TableRow>
+              <TableRow className="hover:bg-transparent">
                 {onRowSelect && (
                   <TableHead className="w-12">
                     <Checkbox
@@ -221,10 +403,20 @@ export function DataTable({
                     />
                   </TableHead>
                 )}
-                {columns.map((column) => (
-                  <TableHead key={column.key}>
+                {getVisibleColumns().map((column) => (
+                  <TableHead key={column.key} className={column.width}>
                     <div className="flex items-center gap-2">
-                      {column.label}
+                      <span
+                        className={
+                          column.align === "center"
+                            ? "text-center"
+                            : column.align === "right"
+                            ? "text-right"
+                            : ""
+                        }
+                      >
+                        {column.label}
+                      </span>
                       {column.sortable && (
                         <Button
                           variant="ghost"
@@ -246,7 +438,7 @@ export function DataTable({
                     </div>
                   </TableHead>
                 ))}
-                <TableHead className="w-12">Actions</TableHead>
+                <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -259,9 +451,9 @@ export function DataTable({
                         <Skeleton className="h-4 w-4" />
                       </TableCell>
                     )}
-                    {columns.map((column) => (
+                    {getVisibleColumns().map((column) => (
                       <TableCell key={column.key}>
-                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-4 w-full max-w-32" />
                       </TableCell>
                     ))}
                     <TableCell>
@@ -272,15 +464,21 @@ export function DataTable({
               ) : data.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={columns.length + (onRowSelect ? 2 : 1)}
-                    className="text-center py-8"
+                    colSpan={getVisibleColumns().length + (onRowSelect ? 2 : 1)}
+                    className="text-center py-12"
                   >
-                    {emptyMessage}
+                    <div className="flex flex-col items-center gap-2">
+                      <IconEyeOff className="h-8 w-8 text-muted-foreground" />
+                      <p className="text-muted-foreground">{emptyMessage}</p>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
                 data.map((row, index) => (
-                  <TableRow key={row.id || index}>
+                  <TableRow
+                    key={row.id || index}
+                    className={`${getDensityClasses()} hover:bg-muted/50 transition-colors`}
+                  >
                     {onRowSelect && (
                       <TableCell>
                         <Checkbox
@@ -291,8 +489,17 @@ export function DataTable({
                         />
                       </TableCell>
                     )}
-                    {columns.map((column) => (
-                      <TableCell key={column.key}>
+                    {getVisibleColumns().map((column) => (
+                      <TableCell
+                        key={column.key}
+                        className={
+                          column.align === "center"
+                            ? "text-center"
+                            : column.align === "right"
+                            ? "text-right"
+                            : ""
+                        }
+                      >
                         {column.render
                           ? column.render(row[column.key], row)
                           : formatCellValue(row[column.key], column.key)}
@@ -310,8 +517,11 @@ export function DataTable({
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>View Details</DropdownMenuItem>
-                          <DropdownMenuItem>Edit</DropdownMenuItem>
+                          <DropdownMenuItem>
+                            <IconEye className="h-4 w-4 mr-2" />
+                            View Details
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem className="text-red-600">
                             Delete
                           </DropdownMenuItem>
@@ -327,18 +537,31 @@ export function DataTable({
 
         {/* Pagination */}
         {pagination && (
-          <div className="flex items-center justify-between mt-4">
+          <div className="flex items-center justify-between p-4 border-t bg-muted/20">
             <div className="text-sm text-muted-foreground">
-              Showing {(pagination.current_page - 1) * pagination.per_page + 1}{" "}
+              Showing{" "}
+              <span className="font-medium">
+                {(pagination.current_page - 1) * pagination.per_page + 1}
+              </span>{" "}
               to{" "}
-              {Math.min(
-                pagination.current_page * pagination.per_page,
-                pagination.total
-              )}{" "}
-              of {pagination.total} results
+              <span className="font-medium">
+                {Math.min(
+                  pagination.current_page * pagination.per_page,
+                  pagination.total
+                )}
+              </span>{" "}
+              of <span className="font-medium">{pagination.total}</span> results
             </div>
 
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange?.(1)}
+                disabled={!pagination.has_previous}
+              >
+                <IconChevronsLeft className="h-4 w-4" />
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -346,14 +569,19 @@ export function DataTable({
                 disabled={!pagination.has_previous}
               >
                 <IconChevronLeft className="h-4 w-4" />
-                Previous
               </Button>
 
               <div className="flex items-center gap-1">
                 {Array.from(
                   { length: Math.min(5, pagination.total_pages) },
                   (_, i) => {
-                    const page = i + 1;
+                    const page = Math.max(
+                      1,
+                      Math.min(
+                        pagination.current_page - 2 + i,
+                        pagination.total_pages
+                      )
+                    );
                     return (
                       <Button
                         key={page}
@@ -379,8 +607,15 @@ export function DataTable({
                 onClick={() => onPageChange?.(pagination.current_page + 1)}
                 disabled={!pagination.has_next}
               >
-                Next
                 <IconChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange?.(pagination.total_pages)}
+                disabled={!pagination.has_next}
+              >
+                <IconChevronsRight className="h-4 w-4" />
               </Button>
             </div>
           </div>

@@ -1,7 +1,7 @@
-// app/admin/dashboard/page.tsx - Fixed Implementation
+// app/admin/dashboard/page.tsx - Fixed Implementation with better token handling
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ChartAreaInteractive } from "@/components/chart-area-interactive";
 import { DataTable } from "@/components/data-table";
@@ -33,14 +33,38 @@ import {
 import { Button } from "@/components/ui/button";
 
 function DashboardPage() {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, hasValidToken } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
 
+  // Use ref to prevent multiple concurrent requests
+  const isLoadingRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const fetchDashboardStats = async (isRetry = false) => {
+    // Prevent multiple concurrent requests
+    if (isLoadingRef.current) {
+      console.log("🔄 Request already in progress, skipping...");
+      return;
+    }
+
+    // Check if we have valid authentication
+    if (!isAuthenticated || !hasValidToken) {
+      console.log("⚠️ Not authenticated or no valid token, skipping request");
+      return;
+    }
+
     try {
+      isLoadingRef.current = true;
+
       if (!isRetry) {
         setLoading(true);
       }
@@ -48,18 +72,31 @@ function DashboardPage() {
 
       console.log("🔄 Fetching dashboard stats...");
 
-      // Verify token exists before making request
+      // Double-check token exists before making request
       const token = localStorage.getItem("admin_token");
       if (!token) {
         throw new Error("No authentication token found");
       }
 
       const response = await apiClient.getDashboardStats();
+
+      // Check if component is still mounted
+      if (!mountedRef.current) {
+        console.log("⚠️ Component unmounted, ignoring response");
+        return;
+      }
+
       console.log("✅ Dashboard stats fetched successfully:", response);
 
       setStats(response.data);
       setRetryCount(0); // Reset retry count on success
     } catch (error: any) {
+      // Check if component is still mounted
+      if (!mountedRef.current) {
+        console.log("⚠️ Component unmounted, ignoring error");
+        return;
+      }
+
       console.error("❌ Failed to fetch dashboard stats:", error);
 
       const errorMessage =
@@ -70,47 +107,61 @@ function DashboardPage() {
 
       // If it's an auth error and we haven't retried too many times
       if (error.response?.status === 401 && retryCount < 2) {
-        console.log("🔄 Auth error, retrying in 1 second...");
+        console.log("🔄 Auth error, retrying in 2 seconds...");
         setTimeout(() => {
-          setRetryCount((prev) => prev + 1);
-          fetchDashboardStats(true);
-        }, 1000);
+          if (mountedRef.current) {
+            setRetryCount((prev) => prev + 1);
+            fetchDashboardStats(true);
+          }
+        }, 2000);
       }
     } finally {
-      if (!isRetry) {
+      isLoadingRef.current = false;
+      if (!isRetry && mountedRef.current) {
         setLoading(false);
       }
     }
   };
 
   useEffect(() => {
-    // Only fetch when user is authenticated and we have a token
-    if (isAuthenticated && user) {
-      console.log("✅ User authenticated, fetching dashboard data...");
+    // Only fetch when we have valid authentication AND a valid token
+    if (isAuthenticated && hasValidToken && user) {
+      console.log(
+        "✅ User authenticated with valid token, fetching dashboard data..."
+      );
 
-      // Small delay to ensure token is available
+      // Add a longer delay to ensure token is fully propagated
       const timer = setTimeout(() => {
-        fetchDashboardStats();
-      }, 100);
+        if (mountedRef.current) {
+          fetchDashboardStats();
+        }
+      }, 500); // Increased delay to 500ms
 
       return () => clearTimeout(timer);
     } else {
-      console.log("⚠️ User not authenticated yet, waiting...");
+      console.log("⚠️ Waiting for valid authentication...", {
+        isAuthenticated,
+        hasValidToken,
+        hasUser: !!user,
+      });
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, hasValidToken, user]);
 
   const handleRetry = () => {
     setRetryCount(0);
+    setError(null);
     fetchDashboardStats();
   };
 
   // Show loading while authentication is being checked
-  if (!isAuthenticated || !user) {
+  if (!isAuthenticated || !hasValidToken || !user) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="text-center">
           <div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Authenticating...</p>
+          <p className="text-muted-foreground">
+            {!isAuthenticated ? "Authenticating..." : "Validating session..."}
+          </p>
         </div>
       </div>
     );
@@ -175,11 +226,11 @@ function DashboardPage() {
                     onClick={handleRetry}
                     variant="outline"
                     size="sm"
-                    disabled={loading}
+                    disabled={loading || isLoadingRef.current}
                   >
                     <IconRefresh
                       className={`h-4 w-4 mr-2 ${
-                        loading ? "animate-spin" : ""
+                        loading || isLoadingRef.current ? "animate-spin" : ""
                       }`}
                     />
                     Refresh

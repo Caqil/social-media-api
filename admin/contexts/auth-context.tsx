@@ -1,7 +1,13 @@
-// contexts/auth-context.tsx - Fixed for SSR
+// contexts/auth-context.tsx - Fixed for proper token synchronization
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+} from "react";
 import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
 import { AdminUser, LoginResponse } from "@/types/admin";
@@ -13,6 +19,7 @@ interface AuthContextType {
   logout: () => void;
   refreshToken: () => Promise<void>;
   isAuthenticated: boolean;
+  hasValidToken: boolean; // New: tracks if we have a valid token
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,13 +28,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AdminUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [hasValidToken, setHasValidToken] = useState(false);
   const router = useRouter();
 
-  const isAuthenticated = !!user;
+  const isAuthenticated = !!user && hasValidToken;
 
   // Handle hydration
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // Check if token exists and is valid
+  const checkTokenValidity = useCallback(() => {
+    if (typeof window === "undefined") return false;
+
+    const token = localStorage.getItem("admin_token");
+    const userData = localStorage.getItem("admin_user");
+
+    return !!(token && userData);
   }, []);
 
   useEffect(() => {
@@ -36,18 +54,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     console.log("🔄 Checking existing authentication...");
 
-    // Check for existing token on mount
-    const token =
-      typeof window !== "undefined"
-        ? localStorage.getItem("admin_token")
-        : null;
-    const userData =
-      typeof window !== "undefined" ? localStorage.getItem("admin_user") : null;
+    const token = localStorage.getItem("admin_token");
+    const userData = localStorage.getItem("admin_user");
 
     if (token && userData) {
       try {
         const parsedUser = JSON.parse(userData);
         setUser(parsedUser);
+        setHasValidToken(true);
         console.log(
           "✅ Token and user restored from localStorage:",
           parsedUser.username
@@ -55,14 +69,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         console.error("❌ Error parsing user data:", error);
         // Clear corrupted data
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("admin_token");
-          localStorage.removeItem("admin_user");
-          localStorage.removeItem("admin_refresh_token");
-        }
+        localStorage.removeItem("admin_token");
+        localStorage.removeItem("admin_user");
+        localStorage.removeItem("admin_refresh_token");
+        setHasValidToken(false);
       }
     } else {
       console.log("ℹ️ No existing authentication found");
+      setHasValidToken(false);
     }
 
     setLoading(false);
@@ -76,7 +90,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await apiClient.adminLogin(email, password);
       console.log("✅ Login API response received");
 
-      // Verify response structure
       if (!response.success || !response.data) {
         throw new Error("Invalid login response structure");
       }
@@ -87,25 +100,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error("Missing required login data");
       }
 
-      // Only store if we're on the client side
+      // Store tokens and user data atomically
       if (typeof window !== "undefined") {
-        // Store tokens and user data
         localStorage.setItem("admin_token", access_token);
         localStorage.setItem("admin_refresh_token", refresh_token || "");
         localStorage.setItem("admin_user", JSON.stringify(userData));
-
         console.log("✅ Login data stored in localStorage");
       }
 
-      // Update state
+      // Update state atomically
       setUser(userData);
+      setHasValidToken(true);
 
       console.log("✅ Login successful, user state updated");
 
-      // Small delay to ensure everything is set
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Wait a bit longer to ensure everything is properly set
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
-      // Verify token was stored (only on client)
+      // Verify token was stored
       if (typeof window !== "undefined") {
         const storedToken = localStorage.getItem("admin_token");
         if (!storedToken) {
@@ -113,19 +125,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         console.log("✅ Token verified in localStorage");
       }
-
-      console.log("✅ Redirecting to dashboard...");
-      router.push("/admin/dashboard");
     } catch (error: any) {
       console.error("❌ Login error:", error);
 
-      // Clear any partial data on error (only on client)
+      // Clear any partial data on error
       if (typeof window !== "undefined") {
         localStorage.removeItem("admin_token");
         localStorage.removeItem("admin_refresh_token");
         localStorage.removeItem("admin_user");
       }
       setUser(null);
+      setHasValidToken(false);
 
       const errorMessage =
         error.response?.data?.message || error.message || "Login failed";
@@ -138,17 +148,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     try {
       console.log("🔄 Logging out...");
+      setHasValidToken(false); // Immediately mark as invalid
       await apiClient.adminLogout();
     } catch (error) {
       console.error("❌ Logout error:", error);
     } finally {
-      // Clear local storage regardless of API call result (only on client)
+      // Clear local storage regardless of API call result
       if (typeof window !== "undefined") {
         localStorage.removeItem("admin_token");
         localStorage.removeItem("admin_refresh_token");
         localStorage.removeItem("admin_user");
       }
       setUser(null);
+      setHasValidToken(false);
       console.log("✅ Logout complete, redirecting to login");
       router.push("/admin/login");
     }
@@ -157,21 +169,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshToken = async () => {
     try {
       console.log("🔄 Refreshing token...");
+      setHasValidToken(false); // Temporarily mark as invalid
+
       const response = await apiClient.refreshToken();
 
       if (response.success && response.data?.access_token) {
         if (typeof window !== "undefined") {
           localStorage.setItem("admin_token", response.data.access_token);
         }
+        setHasValidToken(true); // Mark as valid again
         console.log("✅ Token refreshed successfully");
       } else {
         throw new Error("Invalid refresh response");
       }
     } catch (error) {
       console.error("❌ Token refresh error:", error);
+      setHasValidToken(false);
       logout();
     }
   };
+
+  // Listen for storage changes (token updates from API client)
+  useEffect(() => {
+    if (!mounted) return;
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === "admin_token") {
+        const hasToken = !!event.newValue;
+        setHasValidToken(hasToken);
+        console.log("🔄 Token storage changed, hasValidToken:", hasToken);
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, [mounted]);
 
   const value = {
     user,
@@ -180,6 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     logout,
     refreshToken,
     isAuthenticated,
+    hasValidToken,
   };
 
   // Don't render children until mounted to prevent hydration mismatch
@@ -205,7 +238,7 @@ export function useAuth() {
 // Higher-order component for protecting admin routes
 export function withAuth<T extends object>(Component: React.ComponentType<T>) {
   return function AuthenticatedComponent(props: T) {
-    const { isAuthenticated, loading } = useAuth();
+    const { isAuthenticated, loading, hasValidToken } = useAuth();
     const router = useRouter();
     const [mounted, setMounted] = useState(false);
 
@@ -214,11 +247,13 @@ export function withAuth<T extends object>(Component: React.ComponentType<T>) {
     }, []);
 
     useEffect(() => {
-      if (mounted && !loading && !isAuthenticated) {
-        console.log("🔄 Not authenticated, redirecting to login");
+      if (mounted && !loading && (!isAuthenticated || !hasValidToken)) {
+        console.log(
+          "🔄 Not authenticated or invalid token, redirecting to login"
+        );
         router.push("/admin/login");
       }
-    }, [mounted, isAuthenticated, loading, router]);
+    }, [mounted, isAuthenticated, loading, hasValidToken, router]);
 
     if (!mounted || loading) {
       return (
@@ -231,7 +266,7 @@ export function withAuth<T extends object>(Component: React.ComponentType<T>) {
       );
     }
 
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !hasValidToken) {
       return (
         <div className="flex h-screen items-center justify-center">
           <div className="text-center">

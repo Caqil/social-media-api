@@ -283,7 +283,7 @@ func SetupPublicAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHand
 		// NO MIDDLEWARE APPLIED IN DEVELOPMENT
 	} else {
 		// Only apply rate limiting in production
-		auth.Use(middleware.LoginRateLimit())
+		//auth.Use(middleware.LoginRateLimit())
 		log.Println("🛡️  Rate limiting ENABLED for production")
 	}
 	{

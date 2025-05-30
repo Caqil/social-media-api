@@ -1,11 +1,9 @@
-// app/admin/dashboard/page.tsx - Fixed Implementation with better token handling
+// app/admin/dashboard/page.tsx - Final Fix - Prevent Multiple Requests
 "use client";
 
 import { useEffect, useState, useRef } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ChartAreaInteractive } from "@/components/chart-area-interactive";
-import { DataTable } from "@/components/data-table";
-import { SectionCards } from "@/components/section-cards";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import {
@@ -31,16 +29,16 @@ import {
   IconRefresh,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
+import { DebugAuth } from "@/components/debug-auth";
 
 function DashboardPage() {
-  const { user, isAuthenticated, hasValidToken } = useAuth();
+  const { user } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
 
   // Use ref to prevent multiple concurrent requests
-  const isLoadingRef = useRef(false);
+  const fetchingRef = useRef(false);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -49,35 +47,20 @@ function DashboardPage() {
     };
   }, []);
 
-  const fetchDashboardStats = async (isRetry = false) => {
+  const fetchDashboardStats = async () => {
     // Prevent multiple concurrent requests
-    if (isLoadingRef.current) {
-      console.log("🔄 Request already in progress, skipping...");
+    if (fetchingRef.current) {
+      console.log("🔄 Dashboard fetch already in progress, skipping...");
       return;
     }
 
-    // Check if we have valid authentication
-    if (!isAuthenticated || !hasValidToken) {
-      console.log("⚠️ Not authenticated or no valid token, skipping request");
-      return;
-    }
+    fetchingRef.current = true;
 
     try {
-      isLoadingRef.current = true;
-
-      if (!isRetry) {
-        setLoading(true);
-      }
+      setLoading(true);
       setError(null);
 
       console.log("🔄 Fetching dashboard stats...");
-
-      // Double-check token exists before making request
-      const token = localStorage.getItem("admin_token");
-      if (!token) {
-        throw new Error("No authentication token found");
-      }
-
       const response = await apiClient.getDashboardStats();
 
       // Check if component is still mounted
@@ -86,10 +69,8 @@ function DashboardPage() {
         return;
       }
 
-      console.log("✅ Dashboard stats fetched successfully:", response);
-
+      console.log("✅ Dashboard stats fetched successfully");
       setStats(response.data);
-      setRetryCount(0); // Reset retry count on success
     } catch (error: any) {
       // Check if component is still mounted
       if (!mountedRef.current) {
@@ -98,74 +79,30 @@ function DashboardPage() {
       }
 
       console.error("❌ Failed to fetch dashboard stats:", error);
-
       const errorMessage =
         error.response?.data?.message ||
         error.message ||
         "Failed to load dashboard data";
       setError(errorMessage);
-
-      // If it's an auth error and we haven't retried too many times
-      if (error.response?.status === 401 && retryCount < 2) {
-        console.log("🔄 Auth error, retrying in 2 seconds...");
-        setTimeout(() => {
-          if (mountedRef.current) {
-            setRetryCount((prev) => prev + 1);
-            fetchDashboardStats(true);
-          }
-        }, 2000);
-      }
     } finally {
-      isLoadingRef.current = false;
-      if (!isRetry && mountedRef.current) {
+      if (mountedRef.current) {
         setLoading(false);
       }
+      fetchingRef.current = false;
     }
   };
 
+  // Single useEffect for initial load
   useEffect(() => {
-    // Only fetch when we have valid authentication AND a valid token
-    if (isAuthenticated && hasValidToken && user) {
-      console.log(
-        "✅ User authenticated with valid token, fetching dashboard data..."
-      );
-
-      // Add a longer delay to ensure token is fully propagated
-      const timer = setTimeout(() => {
-        if (mountedRef.current) {
-          fetchDashboardStats();
-        }
-      }, 500); // Increased delay to 500ms
-
-      return () => clearTimeout(timer);
-    } else {
-      console.log("⚠️ Waiting for valid authentication...", {
-        isAuthenticated,
-        hasValidToken,
-        hasUser: !!user,
-      });
+    // Only fetch if we haven't started fetching yet
+    if (!fetchingRef.current && mountedRef.current) {
+      fetchDashboardStats();
     }
-  }, [isAuthenticated, hasValidToken, user]);
+  }, []); // Empty dependency array - only run once
 
-  const handleRetry = () => {
-    setRetryCount(0);
-    setError(null);
+  const handleRefresh = () => {
     fetchDashboardStats();
   };
-
-  // Show loading while authentication is being checked
-  if (!isAuthenticated || !hasValidToken || !user) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">
-            {!isAuthenticated ? "Authenticating..." : "Validating session..."}
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   if (error && !loading) {
     return (
@@ -184,7 +121,11 @@ function DashboardPage() {
             <Alert variant="destructive" className="max-w-md">
               <AlertDescription className="space-y-4">
                 <div>{error}</div>
-                <Button onClick={handleRetry} className="w-full">
+                <Button
+                  onClick={handleRefresh}
+                  className="w-full"
+                  disabled={loading || fetchingRef.current}
+                >
                   <IconRefresh className="h-4 w-4 mr-2" />
                   Retry
                 </Button>
@@ -211,26 +152,31 @@ function DashboardPage() {
         <div className="flex flex-1 flex-col">
           <div className="@container/main flex flex-1 flex-col gap-2">
             <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+              {/* Debug Auth Status (Development Only) */}
+              <div className="px-4 lg:px-6">
+                <DebugAuth />
+              </div>
+
               {/* Welcome Message */}
               <div className="px-4 lg:px-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <h1 className="text-2xl font-bold">
-                      Welcome back, {user.first_name || user.username}!
+                      Welcome back, {user?.first_name || user?.username}!
                     </h1>
                     <p className="text-muted-foreground">
                       Here's what's happening with your platform today.
                     </p>
                   </div>
                   <Button
-                    onClick={handleRetry}
+                    onClick={handleRefresh}
                     variant="outline"
                     size="sm"
-                    disabled={loading || isLoadingRef.current}
+                    disabled={loading || fetchingRef.current}
                   >
                     <IconRefresh
                       className={`h-4 w-4 mr-2 ${
-                        loading || isLoadingRef.current ? "animate-spin" : ""
+                        loading || fetchingRef.current ? "animate-spin" : ""
                       }`}
                     />
                     Refresh

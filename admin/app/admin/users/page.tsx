@@ -1,291 +1,174 @@
-// app/admin/users/page.tsx
+// app/admin/users/page.tsx - Simple Users Management
 "use client";
 
-import { SetStateAction, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
-import { DataTable } from "@/components/data-table";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { withAuth } from "@/contexts/auth-context";
+import { withAuth, useAuth } from "@/contexts/auth-context";
 import { apiClient } from "@/lib/api-client";
-import { User, UserFilter, TableColumn } from "@/types/admin";
 import {
-  IconUser,
-  IconMail,
-  IconCalendar,
+  IconRefresh,
+  IconSearch,
+  IconUsers,
   IconShield,
-  IconBan,
-  IconCheck,
-  IconX,
+  IconShieldCheck,
 } from "@tabler/icons-react";
 
+interface User {
+  id: string;
+  username: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  role: string;
+  is_verified: boolean;
+  is_active: boolean;
+  created_at: string;
+  last_active_at?: string;
+}
+
+interface PaginatedUsers {
+  data: User[];
+  pagination: {
+    current_page: number;
+    per_page: number;
+    total: number;
+    total_pages: number;
+    has_next: boolean;
+    has_previous: boolean;
+  };
+}
+
 function UsersPage() {
+  const { user } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
+  const [pagination, setPagination] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pagination, setPagination] = useState<any>(null);
-  const [filters, setFilters] = useState<UserFilter>({ page: 1, limit: 20 });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
 
-  // Dialog states
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [showUserDetails, setShowUserDetails] = useState(false);
-  const [showStatusDialog, setShowStatusDialog] = useState(false);
-  const [showBulkDialog, setShowBulkDialog] = useState(false);
-  const [statusAction, setStatusAction] = useState<string>("");
-  const [bulkAction, setBulkAction] = useState<string>("");
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [actionReason, setActionReason] = useState("");
-
-  const router = useRouter();
-
-  // Fetch users
-  const fetchUsers = async () => {
+  const fetchUsers = async (page = 1, search = "") => {
     try {
       setLoading(true);
-      const response = await apiClient.getUsers(filters);
-      setUsers(response.data.data);
-      setPagination(response.data.pagination);
+      setError(null);
+
+      console.log(`🔄 Fetching users (page ${page})...`);
+
+      const params = {
+        page,
+        limit: 20,
+        ...(search && { search }),
+      };
+
+      const response = await apiClient.getUsers(params);
+
+      if (response.success && response.data) {
+        const paginatedData = response as unknown as PaginatedUsers;
+        setUsers(paginatedData.data);
+        setPagination(paginatedData.pagination);
+        console.log(`✅ Fetched ${paginatedData.data.length} users`);
+      } else {
+        throw new Error(response.message || "Failed to fetch users");
+      }
     } catch (error: any) {
-      console.error("Failed to fetch users:", error);
-      setError(error.response?.data?.message || "Failed to load users");
+      console.error("❌ Failed to fetch users:", error);
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        "Failed to load users";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchUsers();
-  }, [filters]);
+    fetchUsers(currentPage, searchQuery);
+  }, [currentPage]);
 
-  // Handle page change
-  const handlePageChange = (page: number) => {
-    setFilters((prev) => ({ ...prev, page }));
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCurrentPage(1);
+    fetchUsers(1, searchQuery);
   };
 
-  // Handle sorting
-  const handleSort = (column: string, direction: "asc" | "desc") => {
-    // Implement sorting logic
-    console.log("Sort:", column, direction);
+  const handleRefresh = () => {
+    fetchUsers(currentPage, searchQuery);
   };
 
-  // Handle filtering
-  const handleFilter = (newFilters: Record<string, any>) => {
-    setFilters((prev) => ({
-      ...prev,
-      ...newFilters,
-      page: 1, // Reset to first page when filtering
-    }));
-  };
-
-  // Handle row selection
-  const handleRowSelect = (selectedRows: string[]) => {
-    setSelectedIds(selectedRows);
-  };
-
-  // Handle bulk actions
-  const handleBulkAction = (action: string, ids: string[]) => {
-    setBulkAction(action);
-    setSelectedIds(ids);
-    setShowBulkDialog(true);
-  };
-
-  // Execute bulk action
-  const executeBulkAction = async () => {
-    try {
-      await apiClient.bulkUserAction({
-        user_ids: selectedIds,
-        action: bulkAction,
-        reason: actionReason,
-      });
-
-      setShowBulkDialog(false);
-      setActionReason("");
-      fetchUsers();
-    } catch (error: any) {
-      console.error("Bulk action failed:", error);
-      setError(error.response?.data?.message || "Bulk action failed");
+  const getRoleBadgeVariant = (role: string) => {
+    switch (role) {
+      case "super_admin":
+        return "destructive";
+      case "admin":
+        return "default";
+      case "moderator":
+        return "secondary";
+      default:
+        return "outline";
     }
   };
 
-  // Handle user status change
-  const handleStatusChange = async (user: User, action: string) => {
-    setSelectedUser(user);
-    setStatusAction(action);
-    setShowStatusDialog(true);
-  };
-
-  // Execute status change
-  const executeStatusChange = async () => {
-    if (!selectedUser) return;
-
-    try {
-      switch (statusAction) {
-        case "suspend":
-          await apiClient.updateUserStatus(selectedUser.id, {
-            is_active: true,
-            is_suspended: true,
-            reason: actionReason,
-          });
-          break;
-        case "activate":
-          await apiClient.updateUserStatus(selectedUser.id, {
-            is_active: true,
-            is_suspended: false,
-            reason: actionReason,
-          });
-          break;
-        case "deactivate":
-          await apiClient.updateUserStatus(selectedUser.id, {
-            is_active: false,
-            is_suspended: false,
-            reason: actionReason,
-          });
-          break;
-        case "verify":
-          await apiClient.verifyUser(selectedUser.id);
-          break;
-      }
-
-      setShowStatusDialog(false);
-      setActionReason("");
-      fetchUsers();
-    } catch (error: any) {
-      console.error("Status change failed:", error);
-      setError(error.response?.data?.message || "Status change failed");
+  const getRoleIcon = (role: string) => {
+    switch (role) {
+      case "super_admin":
+        return IconShieldCheck;
+      case "admin":
+      case "moderator":
+        return IconShield;
+      default:
+        return IconUsers;
     }
   };
 
-  // Table columns configuration
-  const columns: TableColumn[] = [
-    {
-      key: "user",
-      label: "User",
-      sortable: true,
-      render: (_, user: User) => (
-        <div className="flex items-center gap-3">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={user.profile_picture} alt={user.username} />
-            <AvatarFallback>
-              {user.first_name?.[0]}
-              {user.last_name?.[0]}
-            </AvatarFallback>
-          </Avatar>
-          <div>
-            <div className="font-medium">{user.username}</div>
-            <div className="text-sm text-muted-foreground">{user.email}</div>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: "name",
-      label: "Name",
-      sortable: true,
-      render: (_, user: User) =>
-        `${user.first_name || ""} ${user.last_name || ""}`.trim() || "-",
-    },
-    {
-      key: "role",
-      label: "Role",
-      filterable: true,
-      render: (value: string) => (
-        <Badge variant={value === "admin" ? "default" : "secondary"}>
-          {value}
-        </Badge>
-      ),
-    },
-    {
-      key: "is_verified",
-      label: "Verified",
-      filterable: true,
-      render: (value: boolean) => (
-        <Badge variant={value ? "default" : "secondary"}>
-          {value ? (
-            <IconCheck className="h-3 w-3 mr-1" />
-          ) : (
-            <IconX className="h-3 w-3 mr-1" />
-          )}
-          {value ? "Verified" : "Unverified"}
-        </Badge>
-      ),
-    },
-    {
-      key: "status",
-      label: "Status",
-      filterable: true,
-      render: (_, user: User) => {
-        if (user.is_suspended) {
-          return <Badge className="bg-red-100 text-red-800">Suspended</Badge>;
-        }
-        if (!user.is_active) {
-          return <Badge className="bg-gray-100 text-gray-800">Inactive</Badge>;
-        }
-        return <Badge className="bg-green-100 text-green-800">Active</Badge>;
-      },
-    },
-    {
-      key: "followers_count",
-      label: "Followers",
-      sortable: true,
-      render: (value: number) => value?.toLocaleString() || "0",
-    },
-    {
-      key: "posts_count",
-      label: "Posts",
-      sortable: true,
-      render: (value: number) => value?.toLocaleString() || "0",
-    },
-    {
-      key: "created_at",
-      label: "Joined",
-      sortable: true,
-      render: (value: string) => new Date(value).toLocaleDateString(),
-    },
-  ];
-
-  // Bulk actions configuration
-  const bulkActions = [
-    {
-      label: "Activate Users",
-      action: "activate",
-      variant: "default" as const,
-    },
-    {
-      label: "Suspend Users",
-      action: "suspend",
-      variant: "destructive" as const,
-    },
-    { label: "Verify Users", action: "verify", variant: "default" as const },
-    {
-      label: "Delete Users",
-      action: "delete",
-      variant: "destructive" as const,
-    },
-  ];
-
-  if (error) {
+  if (error && !loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <Alert variant="destructive" className="max-w-md">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      </div>
+      <SidebarProvider
+        style={
+          {
+            "--sidebar-width": "calc(var(--spacing) * 72)",
+            "--header-height": "calc(var(--spacing) * 12)",
+          } as React.CSSProperties
+        }
+      >
+        <AppSidebar variant="inset" />
+        <SidebarInset>
+          <SiteHeader />
+          <div className="flex h-screen items-center justify-center">
+            <Alert variant="destructive" className="max-w-md">
+              <AlertDescription className="space-y-4">
+                <div>{error}</div>
+                <Button onClick={handleRefresh} className="w-full">
+                  <IconRefresh className="h-4 w-4 mr-2" />
+                  Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
+          </div>
+        </SidebarInset>
+      </SidebarProvider>
     );
   }
 
@@ -301,134 +184,209 @@ function UsersPage() {
       <AppSidebar variant="inset" />
       <SidebarInset>
         <SiteHeader />
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold">Users Management</h1>
-              <p className="text-muted-foreground">
-                Manage user accounts, permissions, and activities
-              </p>
+        <div className="flex flex-1 flex-col">
+          <div className="@container/main flex flex-1 flex-col gap-2">
+            <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+              {/* Header */}
+              <div className="px-4 lg:px-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h1 className="text-2xl font-bold">Users Management</h1>
+                    <p className="text-muted-foreground">
+                      Manage platform users and their permissions
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleRefresh}
+                    variant="outline"
+                    size="sm"
+                    disabled={loading}
+                  >
+                    <IconRefresh
+                      className={`h-4 w-4 mr-2 ${
+                        loading ? "animate-spin" : ""
+                      }`}
+                    />
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+
+              {/* Search and Filters */}
+              <div className="px-4 lg:px-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Search Users</CardTitle>
+                    <CardDescription>
+                      Find users by username, email, or name
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <form onSubmit={handleSearch} className="flex gap-2">
+                      <div className="flex-1">
+                        <Input
+                          type="text"
+                          placeholder="Search users..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          disabled={loading}
+                        />
+                      </div>
+                      <Button type="submit" disabled={loading}>
+                        <IconSearch className="h-4 w-4 mr-2" />
+                        Search
+                      </Button>
+                    </form>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Users Table */}
+              <div className="px-4 lg:px-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>
+                      Users {pagination && `(${pagination.total} total)`}
+                    </CardTitle>
+                    <CardDescription>
+                      {pagination &&
+                        `Showing ${
+                          (pagination.current_page - 1) * pagination.per_page +
+                          1
+                        }-${Math.min(
+                          pagination.current_page * pagination.per_page,
+                          pagination.total
+                        )} of ${pagination.total} users`}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {loading ? (
+                      <UsersTableSkeleton />
+                    ) : (
+                      <>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>User</TableHead>
+                              <TableHead>Role</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>Joined</TableHead>
+                              <TableHead>Last Active</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {users.map((user) => {
+                              const RoleIcon = getRoleIcon(user.role);
+                              return (
+                                <TableRow key={user.id}>
+                                  <TableCell>
+                                    <div>
+                                      <div className="font-medium flex items-center gap-2">
+                                        {user.first_name} {user.last_name}
+                                        {user.is_verified && (
+                                          <IconShieldCheck className="h-4 w-4 text-blue-500" />
+                                        )}
+                                      </div>
+                                      <div className="text-sm text-muted-foreground">
+                                        @{user.username} • {user.email}
+                                      </div>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge
+                                      variant={getRoleBadgeVariant(user.role)}
+                                      className="flex items-center gap-1 w-fit"
+                                    >
+                                      <RoleIcon className="h-3 w-3" />
+                                      {user.role.replace("_", " ")}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge
+                                      variant={
+                                        user.is_active ? "default" : "secondary"
+                                      }
+                                    >
+                                      {user.is_active ? "Active" : "Inactive"}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    {new Date(
+                                      user.created_at
+                                    ).toLocaleDateString()}
+                                  </TableCell>
+                                  <TableCell>
+                                    {user.last_active_at
+                                      ? new Date(
+                                          user.last_active_at
+                                        ).toLocaleDateString()
+                                      : "Never"}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+
+                        {/* Pagination */}
+                        {pagination && pagination.total_pages > 1 && (
+                          <div className="flex items-center justify-between mt-4">
+                            <div className="text-sm text-muted-foreground">
+                              Page {pagination.current_page} of{" "}
+                              {pagination.total_pages}
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setCurrentPage(Math.max(1, currentPage - 1))
+                                }
+                                disabled={!pagination.has_previous || loading}
+                              >
+                                Previous
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCurrentPage(currentPage + 1)}
+                                disabled={!pagination.has_next || loading}
+                              >
+                                Next
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           </div>
-
-          <DataTable
-            title="All Users"
-            description={`Manage ${pagination?.total || 0} registered users`}
-            data={users}
-            columns={columns}
-            loading={loading}
-            pagination={pagination}
-            searchPlaceholder="Search users by name, email, or username..."
-            onPageChange={handlePageChange}
-            onSort={handleSort}
-            onFilter={handleFilter}
-            onRowSelect={handleRowSelect}
-            bulkActions={bulkActions}
-            onBulkAction={handleBulkAction}
-            onRefresh={fetchUsers}
-            onExport={() => console.log("Export users")}
-          />
         </div>
       </SidebarInset>
-
-      {/* User Status Change Dialog */}
-      <Dialog open={showStatusDialog} onOpenChange={setShowStatusDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Change User Status</DialogTitle>
-            <DialogDescription>
-              You are about to {statusAction} user: {selectedUser?.username}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="reason">Reason (optional)</Label>
-              <Textarea
-                id="reason"
-                placeholder="Enter reason for this action..."
-                value={actionReason}
-                onChange={(e: { target: { value: SetStateAction<string> } }) =>
-                  setActionReason(e.target.value)
-                }
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowStatusDialog(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={executeStatusChange}
-              variant={
-                statusAction === "suspend" || statusAction === "delete"
-                  ? "destructive"
-                  : "default"
-              }
-            >
-              {statusAction === "suspend" && "Suspend User"}
-              {statusAction === "activate" && "Activate User"}
-              {statusAction === "deactivate" && "Deactivate User"}
-              {statusAction === "verify" && "Verify User"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Bulk Action Dialog */}
-      <Dialog open={showBulkDialog} onOpenChange={setShowBulkDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Bulk Action Confirmation</DialogTitle>
-            <DialogDescription>
-              You are about to {bulkAction} {selectedIds.length} user(s). This
-              action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="bulk-reason">
-                Reason (required for destructive actions)
-              </Label>
-              <Textarea
-                id="bulk-reason"
-                placeholder="Enter reason for this bulk action..."
-                value={actionReason}
-                onChange={(e: { target: { value: SetStateAction<string> } }) =>
-                  setActionReason(e.target.value)
-                }
-                required={bulkAction === "suspend" || bulkAction === "delete"}
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowBulkDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={executeBulkAction}
-              variant={
-                bulkAction === "suspend" || bulkAction === "delete"
-                  ? "destructive"
-                  : "default"
-              }
-              disabled={
-                (bulkAction === "suspend" || bulkAction === "delete") &&
-                !actionReason.trim()
-              }
-            >
-              Execute {bulkAction}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </SidebarProvider>
+  );
+}
+
+function UsersTableSkeleton() {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} className="flex items-center space-x-4">
+          <Skeleton className="h-10 w-10 rounded-full" />
+          <div className="space-y-2 flex-1">
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="h-3 w-32" />
+          </div>
+          <Skeleton className="h-6 w-16" />
+          <Skeleton className="h-6 w-16" />
+          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-4 w-20" />
+        </div>
+      ))}
+    </div>
   );
 }
 

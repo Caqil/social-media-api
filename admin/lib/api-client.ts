@@ -1,6 +1,5 @@
-// lib/api-client.ts - Complete API Client Implementation
+// lib/api-client.ts - Complete Fetch Implementation (No Axios)
 import { DashboardStats } from '@/types/admin'
-import axios, { AxiosInstance, AxiosResponse } from 'axios'
 
 export interface ApiResponse<T = any> {
   success: boolean
@@ -29,7 +28,6 @@ export interface PaginatedResponse<T = any> {
   }
 }
 
-// Fixed login response type
 export interface LoginResponse {
   access_token: string
   refresh_token?: string
@@ -48,7 +46,6 @@ export interface LoginResponse {
   }
 }
 
-// Fixed refresh response type
 export interface RefreshResponse {
   access_token: string
   refresh_token?: string
@@ -56,236 +53,292 @@ export interface RefreshResponse {
   token_type?: string
 }
 
-class ApiClient {
-  private client: AxiosInstance
+class FetchApiClient {
+  private baseURL: string
+  private isRefreshing = false
+  private refreshPromise: Promise<string> | null = null
   private wsConnections: Map<string, WebSocket> = new Map()
-  private refreshingPromise: Promise<string> | null = null
 
   constructor() {
-    this.client = axios.create({
-      baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080',
-      timeout: 30000,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-
-    this.setupInterceptors()
+    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+    console.log('🔧 Fetch API Client initialized:', this.baseURL)
   }
 
-  private setupInterceptors() {
-    // Request interceptor for auth token
-    this.client.interceptors.request.use(
-      (config) => {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`
-          console.log('🔑 Token added to request:', config.url)
-        }
-        return config
-      },
-      (error) => {
-        console.error('❌ Request interceptor error:', error)
-        return Promise.reject(error)
-      }
-    )
-
-    // Response interceptor for error handling
-    this.client.interceptors.response.use(
-      (response: AxiosResponse) => {
-        console.log('✅ API Response:', response.config.url, response.status)
-        return response
-      },
-      async (error) => {
-        const originalRequest = error.config
-
-        console.error('❌ API Error:', {
-          url: originalRequest?.url,
-          status: error.response?.status,
-          message: error.response?.data?.message || error.message
-        })
-
-        if (error.response?.status === 401 && !originalRequest._retry && originalRequest.url !== '/api/v1/admin/public/auth/refresh') {
-          originalRequest._retry = true
-
-          try {
-            const newToken = await this.handleTokenRefresh()
-            originalRequest.headers.Authorization = `Bearer ${newToken}`
-            return this.client(originalRequest)
-          } catch (refreshError) {
-            console.error('❌ Token refresh failed, redirecting to login')
-            this.clearAuthData()
-            if (typeof window !== 'undefined') {
-              window.location.href = '/admin/login'
-            }
-            return Promise.reject(refreshError)
-          }
-        }
-
-        return Promise.reject(error)
-      }
-    )
-  }
-
-  private async handleTokenRefresh(): Promise<string> {
-    // If already refreshing, wait for the existing promise
-    if (this.refreshingPromise) {
-      return this.refreshingPromise
-    }
-
-    this.refreshingPromise = this.performTokenRefresh()
-    
+  private getStoredToken(): string | null {
+    if (typeof window === 'undefined') return null
     try {
-      const newToken = await this.refreshingPromise
-      return newToken
-    } finally {
-      this.refreshingPromise = null
+      return localStorage.getItem('admin_token')
+    } catch {
+      return null
     }
   }
 
-  private async performTokenRefresh(): Promise<string> {
+  private setStoredToken(token: string): void {
+    if (typeof window === 'undefined') return
+    try {
+      localStorage.setItem('admin_token', token)
+      console.log('✅ Token stored')
+    } catch (error) {
+      console.error('❌ Failed to store token:', error)
+    }
+  }
+
+  private clearAuthData(): void {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('admin_token')
+      localStorage.removeItem('admin_refresh_token')
+      localStorage.removeItem('admin_user')
+      console.log('🧹 Auth data cleared')
+    }
+  }
+
+  private async refreshTokenIfNeeded(): Promise<string> {
+    // If already refreshing, wait for the existing refresh
+    if (this.isRefreshing && this.refreshPromise) {
+      console.log('🔄 Waiting for existing refresh...')
+      return this.refreshPromise
+    }
+
     const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('admin_refresh_token') : null
     
     if (!refreshToken) {
       throw new Error('No refresh token available')
     }
 
-    console.log('🔄 Refreshing token...')
+    this.isRefreshing = true
+    console.log('🔄 Starting token refresh...')
     
-    const response = await this.client.post('/api/v1/admin/public/auth/refresh', {
-      refresh_token: refreshToken
+    this.refreshPromise = this.performRefresh(refreshToken)
+    
+    try {
+      const newToken = await this.refreshPromise
+      console.log('✅ Token refresh completed')
+      return newToken
+    } finally {
+      this.isRefreshing = false
+      this.refreshPromise = null
+    }
+  }
+
+  private async performRefresh(refreshToken: string): Promise<string> {
+    const response = await fetch(`${this.baseURL}/api/v1/admin/public/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        refresh_token: refreshToken
+      })
     })
 
-    if (response.data.success && response.data.data?.access_token) {
-      const tokenData = response.data.data as RefreshResponse
-      const newToken = tokenData.access_token
+    if (!response.ok) {
+      throw new Error(`Refresh failed: ${response.status}`)
+    }
+
+    const data = await response.json()
+
+    if (data.success && data.data?.access_token) {
+      const newToken = data.data.access_token
       
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('admin_token', newToken)
-        
-        // Update refresh token if provided
-        if (tokenData.refresh_token) {
-          localStorage.setItem('admin_refresh_token', tokenData.refresh_token)
-        }
+      // Store new tokens
+      this.setStoredToken(newToken)
+      
+      if (data.data.refresh_token && typeof window !== 'undefined') {
+        localStorage.setItem('admin_refresh_token', data.data.refresh_token)
       }
       
-      console.log('✅ Token refreshed successfully')
       return newToken
     } else {
       throw new Error('Invalid refresh response')
     }
   }
+  private async makeRequest<T>(
+    url: string,
+    options: RequestInit = {},
+    retryOnAuth = true
+  ): Promise<ApiResponse<T>> {
+    const fullUrl = `${this.baseURL}${url}`;
 
-  private clearAuthData() {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('admin_token')
-      localStorage.removeItem('admin_refresh_token')
-      localStorage.removeItem('admin_user')
+    // Get current token
+    const token = this.getStoredToken();
+
+    // Prepare headers as a Headers object
+    const headers = new Headers({
+      'Content-Type': 'application/json',
+      ...options.headers,
+    });
+
+    // Add auth header if token exists and not auth endpoint
+    if (token && !url.includes('/auth/')) {
+      headers.set('Authorization', `Bearer ${token}`);
+      console.log(`🔑 Request: ${options.method || 'GET'} ${url} (with token)`);
+    } else {
+      console.log(`🔓 Request: ${options.method || 'GET'} ${url} (no token)`);
     }
+
+    // Make the request
+    const response = await fetch(fullUrl, {
+      ...options,
+      headers,
+    });
+
+    console.log(`📡 Response: ${options.method || 'GET'} ${url} - ${response.status}`);
+
+    // Handle 401 with retry
+    if (response.status === 401 && retryOnAuth && !url.includes('/auth/')) {
+      console.log('🔄 Got 401, attempting token refresh...');
+
+      try {
+        // Refresh token and retry
+        await this.refreshTokenIfNeeded();
+
+        // Retry the request with new token (no retry on second attempt)
+        return this.makeRequest<T>(url, options, false);
+      } catch (refreshError) {
+        console.error('❌ Token refresh failed:', refreshError);
+        this.clearAuthData();
+
+        if (typeof window !== 'undefined') {
+          window.location.href = '/admin/login';
+        }
+        throw refreshError;
+      }
+    }
+
+    // Handle other errors
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ Request failed: ${response.status} - ${errorText}`);
+      throw new Error(`Request failed: ${response.status}`);
+    }
+
+    // Parse response
+    const data = await response.json();
+    return data as ApiResponse<T>;
   }
 
-  // Generic methods with better error handling
+  // Generic HTTP methods
   async get<T>(url: string, params?: any): Promise<ApiResponse<T>> {
-    try {
-      const response = await this.client.get(url, { params })
-      return response.data
-    } catch (error) {
-      console.error(`GET ${url} failed:`, error)
-      throw error
+    let finalUrl = url
+    if (params) {
+      const searchParams = new URLSearchParams()
+      Object.keys(params).forEach(key => {
+        if (params[key] !== undefined && params[key] !== null) {
+          searchParams.append(key, params[key].toString())
+        }
+      })
+      if (searchParams.toString()) {
+        finalUrl += '?' + searchParams.toString()
+      }
     }
+    
+    return this.makeRequest<T>(finalUrl, { method: 'GET' })
   }
 
   async post<T>(url: string, data?: any): Promise<ApiResponse<T>> {
-    try {
-      const response = await this.client.post(url, data)
-      return response.data
-    } catch (error) {
-      console.error(`POST ${url} failed:`, error)
-      throw error
-    }
+    return this.makeRequest<T>(url, {
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined,
+    })
   }
 
   async put<T>(url: string, data?: any): Promise<ApiResponse<T>> {
-    try {
-      const response = await this.client.put(url, data)
-      return response.data
-    } catch (error) {
-      console.error(`PUT ${url} failed:`, error)
-      throw error
-    }
+    return this.makeRequest<T>(url, {
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined,
+    })
   }
 
   async patch<T>(url: string, data?: any): Promise<ApiResponse<T>> {
-    try {
-      const response = await this.client.patch(url, data)
-      return response.data
-    } catch (error) {
-      console.error(`PATCH ${url} failed:`, error)
-      throw error
-    }
+    return this.makeRequest<T>(url, {
+      method: 'PATCH',
+      body: data ? JSON.stringify(data) : undefined,
+    })
   }
 
   async delete<T>(url: string, data?: any): Promise<ApiResponse<T>> {
-    try {
-      const response = await this.client.delete(url, { data })
-      return response.data
-    } catch (error) {
-      console.error(`DELETE ${url} failed:`, error)
-      throw error
-    }
+    return this.makeRequest<T>(url, {
+      method: 'DELETE',
+      body: data ? JSON.stringify(data) : undefined,
+    })
   }
 
   // ==================== AUTHENTICATION ====================
   async adminLogin(email: string, password: string): Promise<ApiResponse<LoginResponse>> {
-    console.log('🔄 Attempting admin login...')
-    try {
-      const response = await this.client.post('/api/v1/admin/public/auth/login', {
+    console.log('🔄 Starting admin login...')
+    
+    // Clear any existing auth data first
+    this.clearAuthData()
+    
+    const response = await fetch(`${this.baseURL}/api/v1/admin/public/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
         email,
         password,
       })
-      console.log('✅ Login API call successful:', response.data)
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || `Login failed: ${response.status}`)
+    }
+
+    const data = await response.json()
+    console.log('✅ Login API call successful')
+    
+    // Store tokens if login successful
+    if (data.success && data.data) {
+      const loginData = data.data as LoginResponse
+      const { access_token, refresh_token, user } = loginData
       
-      // Store tokens if login successful
-      if (response.data.success && response.data.data) {
-        const loginData = response.data.data as LoginResponse
-        const { access_token, refresh_token, user } = loginData
-        
-        if (typeof window !== 'undefined') {
-          if (access_token) localStorage.setItem('admin_token', access_token)
-          if (refresh_token) localStorage.setItem('admin_refresh_token', refresh_token)
-          if (user) localStorage.setItem('admin_user', JSON.stringify(user))
+      if (typeof window !== 'undefined') {
+        if (access_token) {
+          this.setStoredToken(access_token)
+          console.log('✅ Access token stored')
+        }
+        if (refresh_token) {
+          localStorage.setItem('admin_refresh_token', refresh_token)
+          console.log('✅ Refresh token stored')
+        }
+        if (user) {
+          localStorage.setItem('admin_user', JSON.stringify(user))
+          console.log('✅ User data stored')
         }
       }
-      
-      return response.data as ApiResponse<LoginResponse>
-    } catch (error) {
-      console.error('❌ Login API call failed:', error)
-      throw error
     }
+    
+    return data as ApiResponse<LoginResponse>
   }
 
-  async adminLogout() {
-    console.log('🔄 Attempting admin logout...')
+  async adminLogout(): Promise<void> {
+    console.log('🔄 Starting admin logout...')
+    
     try {
-      const response = await this.client.post('/api/v1/admin/public/auth/logout')
-      console.log('✅ Logout API call successful')
-      
-      // Clear stored data
-      this.clearAuthData()
-      
-      return response.data
+      const token = this.getStoredToken()
+      if (token) {
+        await fetch(`${this.baseURL}/api/v1/admin/public/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+        })
+      }
     } catch (error) {
-      console.error('❌ Logout API call failed:', error)
-      // Clear data even if logout fails
+      console.warn('⚠️ Logout API call failed:', error)
+    } finally {
       this.clearAuthData()
-      throw error
+      console.log('✅ Logout completed')
     }
   }
 
   async refreshToken(): Promise<ApiResponse<RefreshResponse>> {
     console.log('🔄 Manual token refresh requested...')
     try {
-      const newToken = await this.handleTokenRefresh()
+      const newToken = await this.refreshTokenIfNeeded()
       return { 
         success: true, 
         message: 'Token refreshed successfully',
@@ -323,7 +376,7 @@ class ApiClient {
     return this.get('/api/v1/admin/dashboard')
   }
 
-  async getDashboardStats() {
+  async getDashboardStats(): Promise<ApiResponse<DashboardStats>> {
     console.log('🔄 Fetching dashboard stats...')
     return this.get<DashboardStats>('/api/v1/admin/dashboard/stats')
   }
@@ -1040,11 +1093,10 @@ class ApiClient {
     return this.put('/api/v1/admin/config/rate-limits', data)
   }
 
-
   // ==================== WEBSOCKET CONNECTIONS ====================
   connectWebSocket(endpoint: string, onMessage?: (data: any) => void): WebSocket | null {
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null
+      const token = this.getStoredToken()
       if (!token) {
         console.error('No token available for WebSocket connection')
         return null
@@ -1123,25 +1175,55 @@ class ApiClient {
 
   // ==================== FILE UPLOAD ====================
   async uploadFile(file: File, type: 'avatar' | 'media' | 'document' = 'media'): Promise<ApiResponse> {
+    const token = this.getStoredToken()
     const formData = new FormData()
     formData.append('file', file)
     formData.append('type', type)
 
-    const response = await this.client.post('/api/v1/admin/upload', formData, {
+    const response = await fetch(`${this.baseURL}/api/v1/admin/upload`, {
+      method: 'POST',
       headers: {
-        'Content-Type': 'multipart/form-data',
+        ...(token && { Authorization: `Bearer ${token}` }),
       },
+      body: formData,
     })
-    return response.data
+
+    if (!response.ok) {
+      throw new Error(`Upload failed: ${response.status}`)
+    }
+
+    return response.json()
   }
 
   // ==================== EXPORT UTILITIES ====================
   async exportData(type: string, params?: any): Promise<Blob> {
-    const response = await this.client.get(`/api/v1/admin/export/${type}`, {
-      params,
-      responseType: 'blob',
+    const token = this.getStoredToken()
+    let url = `${this.baseURL}/api/v1/admin/export/${type}`
+    
+    if (params) {
+      const searchParams = new URLSearchParams()
+      Object.keys(params).forEach(key => {
+        if (params[key] !== undefined && params[key] !== null) {
+          searchParams.append(key, params[key].toString())
+        }
+      })
+      if (searchParams.toString()) {
+        url += '?' + searchParams.toString()
+      }
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
     })
-    return response.data
+
+    if (!response.ok) {
+      throw new Error(`Export failed: ${response.status}`)
+    }
+
+    return response.blob()
   }
 
   downloadFile(blob: Blob, filename: string) {
@@ -1175,14 +1257,18 @@ class ApiClient {
 
   // Get current token
   getCurrentToken(): string | null {
-    return typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null
+    return this.getStoredToken()
   }
 
   // Get current user
   getCurrentUser(): any | null {
     if (typeof window === 'undefined') return null
-    const user = localStorage.getItem('admin_user')
-    return user ? JSON.parse(user) : null
+    try {
+      const user = localStorage.getItem('admin_user')
+      return user ? JSON.parse(user) : null
+    } catch {
+      return null
+    }
   }
 
   // Check if user has permission
@@ -1202,18 +1288,18 @@ class ApiClient {
 
   // Get API base URL
   getBaseUrl(): string {
-    return this.client.defaults.baseURL || 'http://localhost:8080'
+    return this.baseURL
   }
 
-  // Set custom timeout for a request
-  withTimeout(timeout: number) {
-    const customClient = axios.create({
-      ...this.client.defaults,
-      timeout,
-    })
-    return customClient
+  // Debug method
+  debugStatus() {
+    console.log('🔍 API Client Debug:')
+    console.log('- Base URL:', this.baseURL)
+    console.log('- Token:', this.getStoredToken() ? 'Present' : 'Missing')
+    console.log('- User:', this.getCurrentUser() ? 'Present' : 'Missing')
+    console.log('- Is refreshing:', this.isRefreshing)
   }
 }
 
-export const apiClient = new ApiClient()
+export const apiClient = new FetchApiClient()
 export default apiClient

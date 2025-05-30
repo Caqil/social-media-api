@@ -11,6 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+// migrations/001_create_admin_user.go
 func CreateAdminUser001() Migration {
 	return Migration{
 		ID:          "001_create_admin_user",
@@ -39,19 +40,21 @@ func CreateAdminUser001() Migration {
 
 			// Create admin user
 			adminUser := models.User{
-				Username:      "admin",
-				Email:         "admin@example.com",
-				Password:      hashedPassword,
-				FirstName:     "System",
-				LastName:      "Admin",
-				DisplayName:   "System Administrator",
-				Role:          models.RoleSuperAdmin, // Give super admin role
-				IsActive:      true,
-				IsVerified:    true,
-				EmailVerified: true,
+				Username:    "admin",
+				Email:       "admin@example.com",
+				Password:    hashedPassword,
+				FirstName:   "System",
+				LastName:    "Admin",
+				DisplayName: "System Administrator",
+				// Don't set Role here, set it after BeforeCreate()
 			}
 
 			adminUser.BeforeCreate()
+
+			// Set admin-specific values AFTER BeforeCreate()
+			adminUser.Role = models.RoleSuperAdmin
+			adminUser.IsVerified = true    // Override default
+			adminUser.EmailVerified = true // Override default
 
 			_, err = collection.InsertOne(ctx, adminUser)
 			if err != nil {

@@ -1,4 +1,4 @@
-// app/admin/dashboard/page.tsx
+// app/admin/dashboard/page.tsx - Fixed Implementation
 "use client";
 
 import { useEffect, useState } from "react";
@@ -18,7 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { withAuth } from "@/contexts/auth-context";
+import { withAuth, useAuth } from "@/contexts/auth-context";
 import { apiClient } from "@/lib/api-client";
 import { DashboardStats } from "@/types/admin";
 import {
@@ -28,39 +28,120 @@ import {
   IconMessages,
   IconReport,
   IconHeart,
+  IconRefresh,
 } from "@tabler/icons-react";
+import { Button } from "@/components/ui/button";
 
 function DashboardPage() {
+  const { user, isAuthenticated } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
-  useEffect(() => {
-    const fetchDashboardStats = async () => {
-      try {
+  const fetchDashboardStats = async (isRetry = false) => {
+    try {
+      if (!isRetry) {
         setLoading(true);
-        const response = await apiClient.getDashboardStats();
-        setStats(response.data);
-      } catch (error: any) {
-        console.error("Failed to fetch dashboard stats:", error);
-        setError(
-          error.response?.data?.message || "Failed to load dashboard data"
-        );
-      } finally {
+      }
+      setError(null);
+
+      console.log("🔄 Fetching dashboard stats...");
+
+      // Verify token exists before making request
+      const token = localStorage.getItem("admin_token");
+      if (!token) {
+        throw new Error("No authentication token found");
+      }
+
+      const response = await apiClient.getDashboardStats();
+      console.log("✅ Dashboard stats fetched successfully:", response);
+
+      setStats(response.data);
+      setRetryCount(0); // Reset retry count on success
+    } catch (error: any) {
+      console.error("❌ Failed to fetch dashboard stats:", error);
+
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        "Failed to load dashboard data";
+      setError(errorMessage);
+
+      // If it's an auth error and we haven't retried too many times
+      if (error.response?.status === 401 && retryCount < 2) {
+        console.log("🔄 Auth error, retrying in 1 second...");
+        setTimeout(() => {
+          setRetryCount((prev) => prev + 1);
+          fetchDashboardStats(true);
+        }, 1000);
+      }
+    } finally {
+      if (!isRetry) {
         setLoading(false);
       }
-    };
+    }
+  };
 
+  useEffect(() => {
+    // Only fetch when user is authenticated and we have a token
+    if (isAuthenticated && user) {
+      console.log("✅ User authenticated, fetching dashboard data...");
+
+      // Small delay to ensure token is available
+      const timer = setTimeout(() => {
+        fetchDashboardStats();
+      }, 100);
+
+      return () => clearTimeout(timer);
+    } else {
+      console.log("⚠️ User not authenticated yet, waiting...");
+    }
+  }, [isAuthenticated, user]);
+
+  const handleRetry = () => {
+    setRetryCount(0);
     fetchDashboardStats();
-  }, []);
+  };
 
-  if (error) {
+  // Show loading while authentication is being checked
+  if (!isAuthenticated || !user) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <Alert variant="destructive" className="max-w-md">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
+        <div className="text-center">
+          <div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Authenticating...</p>
+        </div>
       </div>
+    );
+  }
+
+  if (error && !loading) {
+    return (
+      <SidebarProvider
+        style={
+          {
+            "--sidebar-width": "calc(var(--spacing) * 72)",
+            "--header-height": "calc(var(--spacing) * 12)",
+          } as React.CSSProperties
+        }
+      >
+        <AppSidebar variant="inset" />
+        <SidebarInset>
+          <SiteHeader />
+          <div className="flex h-screen items-center justify-center">
+            <Alert variant="destructive" className="max-w-md">
+              <AlertDescription className="space-y-4">
+                <div>{error}</div>
+                <Button onClick={handleRetry} className="w-full">
+                  <IconRefresh className="h-4 w-4 mr-2" />
+                  Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
+          </div>
+        </SidebarInset>
+      </SidebarProvider>
     );
   }
 
@@ -79,6 +160,33 @@ function DashboardPage() {
         <div className="flex flex-1 flex-col">
           <div className="@container/main flex flex-1 flex-col gap-2">
             <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+              {/* Welcome Message */}
+              <div className="px-4 lg:px-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h1 className="text-2xl font-bold">
+                      Welcome back, {user.first_name || user.username}!
+                    </h1>
+                    <p className="text-muted-foreground">
+                      Here's what's happening with your platform today.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleRetry}
+                    variant="outline"
+                    size="sm"
+                    disabled={loading}
+                  >
+                    <IconRefresh
+                      className={`h-4 w-4 mr-2 ${
+                        loading ? "animate-spin" : ""
+                      }`}
+                    />
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+
               {/* Stats Cards */}
               {loading ? <StatsCardsSkeleton /> : <StatsCards stats={stats} />}
 
@@ -95,11 +203,7 @@ function DashboardPage() {
                     </CardContent>
                   </Card>
                 ) : (
-                  <ChartAreaInteractive
-                    data={stats?.user_growth_chart || []}
-                    title="User Growth"
-                    description="New user registrations over time"
-                  />
+                  <ChartAreaInteractive />
                 )}
               </div>
 
@@ -125,38 +229,41 @@ function DashboardPage() {
 }
 
 function StatsCards({ stats }: { stats: DashboardStats | null }) {
-  if (!stats) return null;
+  if (!stats) return <StatsCardsSkeleton />;
 
   const cards = [
     {
       title: "Total Users",
-      value: stats.total_users.toLocaleString(),
+      value: stats.total_users?.toLocaleString() || "0",
       icon: IconUsers,
-      change: `+${stats.new_users_today}`,
+      change: `+${stats.new_users_today || 0}`,
       changeType: "positive" as const,
       description: "New users today",
     },
     {
       title: "Total Posts",
-      value: stats.total_posts.toLocaleString(),
+      value: stats.total_posts?.toLocaleString() || "0",
       icon: IconMessages,
-      change: `+${stats.new_posts_today}`,
+      change: `+${stats.new_posts_today || 0}`,
       changeType: "positive" as const,
       description: "Posts created today",
     },
     {
       title: "Pending Reports",
-      value: stats.pending_reports.toLocaleString(),
+      value: stats.pending_reports?.toLocaleString() || "0",
       icon: IconReport,
-      change: stats.pending_reports > 10 ? "High" : "Normal",
-      changeType: stats.pending_reports > 10 ? "negative" : "neutral",
+      change: (stats.pending_reports || 0) > 10 ? "High" : "Normal",
+      changeType: (stats.pending_reports || 0) > 10 ? "negative" : "neutral",
       description: "Require attention",
     },
     {
       title: "Active Users",
-      value: stats.active_users.toLocaleString(),
+      value: stats.active_users?.toLocaleString() || "0",
       icon: IconHeart,
-      change: `${((stats.active_users / stats.total_users) * 100).toFixed(1)}%`,
+      change: `${(
+        ((stats.active_users || 0) / (stats.total_users || 1)) *
+        100
+      ).toFixed(1)}%`,
       changeType: "positive" as const,
       description: "Of total users",
     },
@@ -260,10 +367,10 @@ function RecentActivities({ activities }: { activities: any[] }) {
 }
 
 function SystemHealthCard({ health }: { health: any }) {
-  if (!health) return null;
+  if (!health) return <SystemHealthSkeleton />;
 
   const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
+    switch (status?.toLowerCase()) {
       case "healthy":
       case "connected":
       case "active":
@@ -295,7 +402,7 @@ function SystemHealthCard({ health }: { health: any }) {
                   health.database_status
                 )}`}
               >
-                {health.database_status}
+                {health.database_status || "Unknown"}
               </div>
               <p className="text-sm text-muted-foreground mt-1">Database</p>
             </div>
@@ -305,19 +412,19 @@ function SystemHealthCard({ health }: { health: any }) {
                   health.cache_status
                 )}`}
               >
-                {health.cache_status}
+                {health.cache_status || "Unknown"}
               </div>
               <p className="text-sm text-muted-foreground mt-1">Cache</p>
             </div>
             <div className="text-center">
               <div className="text-lg font-semibold">
-                {health.memory_usage.toFixed(1)}%
+                {(health.memory_usage || 0).toFixed(1)}%
               </div>
               <p className="text-sm text-muted-foreground">Memory</p>
             </div>
             <div className="text-center">
               <div className="text-lg font-semibold">
-                {health.cpu_usage.toFixed(1)}%
+                {(health.cpu_usage || 0).toFixed(1)}%
               </div>
               <p className="text-sm text-muted-foreground">CPU</p>
             </div>

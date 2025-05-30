@@ -4746,7 +4746,7 @@ func (h *AdminHandler) GetSystemHealth(c *gin.Context) {
 	}
 
 	// Get database stats
-	dbStats := h.db.RunCommand(ctx, bson.D{{"dbStats", 1}})
+	dbStats := h.db.RunCommand(ctx, bson.D{{Key: "dbStats", Value: 1}})
 	var dbStatsResult bson.M
 	dbStats.Decode(&dbStatsResult)
 

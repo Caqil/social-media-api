@@ -2,6 +2,7 @@
 package routes
 
 import (
+	"log"
 	"time"
 
 	"social-media-api/internal/config"
@@ -289,16 +290,21 @@ func SetupHighSecurityAdminMiddleware(db *mongo.Database, jwtSecret, refreshSecr
 func SetupPublicAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler) {
 	public := router.Group("/api/admin/public")
 	public.Use(middleware.CORS())
-
+	public.GET("/status", adminHandler.GetPublicSystemStatus)
+	public.GET("/health", adminHandler.GetPublicHealthCheck)
 	// Authentication routes
 	auth := public.Group("/auth")
 
 	cfg := config.GetConfig()
 	if cfg.IsDevelopment() {
-		// More lenient rate limiting for development
-		auth.Use(middleware.DevLoginRateLimit())
+		log.Println("⚠️  ALL RATE LIMITING DISABLED FOR DEVELOPMENT")
+		log.Println("🔑 Login endpoint: POST /api/admin/public/auth/login")
+		log.Println("🔄 Refresh endpoint: POST /api/admin/public/auth/refresh")
+		// NO MIDDLEWARE APPLIED IN DEVELOPMENT
 	} else {
+		// Only apply rate limiting in production
 		auth.Use(middleware.LoginRateLimit())
+		log.Println("🛡️  Rate limiting ENABLED for production")
 	}
 	{
 		auth.POST("/login", adminHandler.AdminLogin)

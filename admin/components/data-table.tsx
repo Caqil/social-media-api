@@ -1,4 +1,4 @@
-// components/enhanced-data-table.tsx
+// components/enhanced-data-table.tsx - Fixed version
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -159,10 +159,15 @@ export function DataTable({
     );
   };
 
-  // Handle filter change
+  // ✅ FIXED: Handle filter change with proper "all" handling
   const handleFilterChange = (key: string, value: any) => {
     const newFilters = { ...filters };
-    if (value === "" || value === null || value === undefined) {
+    if (
+      value === "all" ||
+      value === "" ||
+      value === null ||
+      value === undefined
+    ) {
       delete newFilters[key];
     } else {
       newFilters[key] = value;
@@ -198,8 +203,14 @@ export function DataTable({
     }
   };
 
-  // Active filters count
-  const activeFiltersCount = Object.keys(filters).length + (searchTerm ? 1 : 0);
+  // ✅ FIXED: Active filters count - only count non-empty filters
+  const activeFiltersCount =
+    Object.keys(filters).filter(
+      (key) =>
+        filters[key] !== undefined &&
+        filters[key] !== null &&
+        filters[key] !== ""
+    ).length + (searchTerm ? 1 : 0);
 
   return (
     <Card className="w-full">
@@ -236,21 +247,6 @@ export function DataTable({
                   />
                 </div>
               )}
-
-              {/* Filters Toggle */}
-              <Button
-                variant={showFilters ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowFilters(!showFilters)}
-              >
-                <IconFilter className="h-4 w-4 mr-2" />
-                Filters
-                {activeFiltersCount > 0 && (
-                  <Badge variant="secondary" className="ml-2">
-                    {activeFiltersCount}
-                  </Badge>
-                )}
-              </Button>
 
               {/* Clear Filters */}
               {activeFiltersCount > 0 && (
@@ -357,35 +353,6 @@ export function DataTable({
               )}
             </div>
           </div>
-
-          {/* Advanced Filters */}
-          {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4 bg-background rounded-lg border">
-              {getFilterableColumns().map((column) => (
-                <div key={column.key} className="space-y-2">
-                  <label className="text-sm font-medium">{column.label}</label>
-                  <Select
-                    value={filters[column.key] || ""}
-                    onValueChange={(value) =>
-                      handleFilterChange(column.key, value)
-                    }
-                  >
-                    <SelectTrigger className="h-8">
-                      <SelectValue
-                        placeholder={`Filter by ${column.label.toLowerCase()}`}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">All</SelectItem>
-                      {/* This would be populated with actual filter options */}
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* Table */}
@@ -468,7 +435,7 @@ export function DataTable({
                     className="text-center py-12"
                   >
                     <div className="flex flex-col items-center gap-2">
-                      <IconEyeOff className="h-8 w-8 text-muted-foreground" />
+                      <IconEyeOff className="h-8 w-8 text-muted-foreground/50 mb-3" />
                       <p className="text-muted-foreground">{emptyMessage}</p>
                     </div>
                   </TableCell>

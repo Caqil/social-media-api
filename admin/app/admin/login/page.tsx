@@ -23,6 +23,20 @@ import {
 } from "@/components/ui/dialog";
 import { IconEye, IconEyeOff, IconLoader2 } from "@tabler/icons-react";
 
+// Helper function to safely extract error message
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error && typeof error === "object" && "message" in error) {
+    return String(error.message);
+  }
+  return "An unexpected error occurred";
+}
+
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -43,7 +57,10 @@ export default function AdminLoginPage() {
       await login(email, password);
       router.push("/admin/dashboard");
     } catch (error) {
-      setError(error.message || "Login failed. Please try again.");
+      // Use the helper function to safely extract the error message
+      const errorMessage =
+        getErrorMessage(error) || "Login failed. Please try again.";
+      setError(errorMessage);
       setIsErrorDialogOpen(true);
     } finally {
       setIsLoading(false);

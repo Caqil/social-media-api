@@ -1,4 +1,4 @@
-// lib/table-utils.tsx - Common table utilities and formatters
+// lib/table-utils.tsx - Fixed version with proper filter values
 import React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -534,26 +534,26 @@ export const BulkActions = {
   ],
 };
 
-// Common filter options by entity type
+// ✅ FIXED: Common filter options by entity type - changed empty strings to "all"
 export const FilterOptions = {
   user: {
     is_verified: [
-      { label: "All", value: "", icon: IconEye },
+      { label: "All", value: "all", icon: IconEye }, // ✅ Changed from "" to "all"
       { label: "Verified", value: "true", icon: IconUserCheck },
       { label: "Unverified", value: "false", icon: IconUserX },
     ],
     is_active: [
-      { label: "All", value: "", icon: IconEye },
+      { label: "All", value: "all", icon: IconEye }, // ✅ Changed from "" to "all"
       { label: "Active", value: "true", icon: IconCheck },
       { label: "Inactive", value: "false", icon: IconBan },
     ],
     is_suspended: [
-      { label: "All", value: "", icon: IconEye },
+      { label: "All", value: "all", icon: IconEye }, // ✅ Changed from "" to "all"
       { label: "Not Suspended", value: "false", icon: IconCheck },
       { label: "Suspended", value: "true", icon: IconAlertTriangle },
     ],
     role: [
-      { label: "All Roles", value: "", icon: IconEye },
+      { label: "All Roles", value: "all", icon: IconEye }, // ✅ Changed from "" to "all"
       { label: "User", value: "user", icon: IconUsers },
       { label: "Moderator", value: "moderator", icon: IconShield },
       { label: "Admin", value: "admin", icon: IconShield },
@@ -563,17 +563,17 @@ export const FilterOptions = {
 
   post: {
     is_reported: [
-      { label: "All", value: "", icon: IconEye },
+      { label: "All", value: "all", icon: IconEye }, // ✅ Changed from "" to "all"
       { label: "Not Reported", value: "false", icon: IconCheck },
       { label: "Reported", value: "true", icon: IconFlag },
     ],
     is_hidden: [
-      { label: "All", value: "", icon: IconEye },
+      { label: "All", value: "all", icon: IconEye }, // ✅ Changed from "" to "all"
       { label: "Visible", value: "false", icon: IconEye },
       { label: "Hidden", value: "true", icon: IconEyeOff },
     ],
     visibility: [
-      { label: "All", value: "", icon: IconEye },
+      { label: "All", value: "all", icon: IconEye }, // ✅ Changed from "" to "all"
       { label: "Public", value: "public", icon: IconEye },
       { label: "Friends", value: "friends", icon: IconUsers },
       { label: "Private", value: "private", icon: IconEyeOff },
@@ -582,14 +582,14 @@ export const FilterOptions = {
 
   report: {
     status: [
-      { label: "All", value: "", icon: IconEye },
+      { label: "All", value: "all", icon: IconEye }, // ✅ Changed from "" to "all"
       { label: "Pending", value: "pending", icon: IconClock },
       { label: "Reviewing", value: "reviewing", icon: IconEye },
       { label: "Resolved", value: "resolved", icon: IconCheck },
       { label: "Rejected", value: "rejected", icon: IconAlertTriangle },
     ],
     priority: [
-      { label: "All", value: "", icon: IconEye },
+      { label: "All", value: "all", icon: IconEye }, // ✅ Changed from "" to "all"
       { label: "Low", value: "low", icon: IconCheck },
       { label: "Medium", value: "medium", icon: IconClock },
       { label: "High", value: "high", icon: IconAlertTriangle },

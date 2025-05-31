@@ -865,62 +865,60 @@ class FetchApiClient {
     expand?: string
   }): Promise<PaginatedResponse> {
     try {
-      // Always include parameters to ensure we get creator data
-      const enhancedParams = {
+      console.log('🔍 getGroups called with original params:', params);
+      
+      // Start with the original params and only add what we need
+      const apiParams: any = {
         ...params,
-        include_creator: true,     // Request creator data inclusion
-        expand: params?.expand || 'creator,stats',   // Explicitly request creator and stats expansion
+        include_creator: true,
+        expand: 'creator,stats'
       };
-      
-      // Debug the parameters being sent to the API
-      console.log('📡 getGroups API request params:', enhancedParams);
-      
-      // Make a copy of params to safely modify
-      const apiParams = { ...enhancedParams };
-      
-      // Handle special params that might need different keys or formats for the API
-      // These adjustments should be based on the API documentation
-      
-      // Example: If the API expects 'group_type' instead of 'type'
-      if (apiParams.type !== undefined) {
-        // Keep the original type parameter, but also add the alternative
-        apiParams.group_type = apiParams.type;
-      }
-      
-      // Example: If the API expects 'group_category' instead of 'category'
-      if (apiParams.category !== undefined) {
-        // Keep the original category parameter, but also add the alternative
-        apiParams.group_category = apiParams.category;
-      }
-      
-      // Example: If the API expects 'verified' instead of 'is_verified'
-      if (apiParams.is_verified !== undefined) {
-        // Keep the original is_verified parameter, but also add the alternative
-        apiParams.verified = apiParams.is_verified;
-      }
-      
-      // Example: If the API expects 'active' instead of 'is_active'
-      if (apiParams.is_active !== undefined) {
-        // Keep the original is_active parameter, but also add the alternative
-        apiParams.active = apiParams.is_active;
-      }
-      
-      // Log the modified params
-      console.log('📡 Modified API params for compatibility:', apiParams);
-      
+  
+      // Clean up any undefined values to avoid sending them
+      Object.keys(apiParams).forEach(key => {
+        if (apiParams[key] === undefined || apiParams[key] === null || apiParams[key] === '') {
+          delete apiParams[key];
+        }
+      });
+  
+      // Convert "all" values to undefined (don't send them)
+      if (apiParams.type === 'all') delete apiParams.type;
+      if (apiParams.category === 'all') delete apiParams.category;
+      if (apiParams.is_verified === 'all') delete apiParams.is_verified;
+      if (apiParams.is_active === 'all') delete apiParams.is_active;
+  
+      // Log what we're actually sending to the API
+      console.log('📡 Sending to API:', apiParams);
+      console.log('📡 API URL will be:', `${this.baseURL}/api/v1/admin/groups?${new URLSearchParams(apiParams).toString()}`);
+  
       const response = await this.get<any>('/api/v1/admin/groups', apiParams);
       
+      console.log('📥 API Response:', {
+        success: response.success,
+        dataLength: response.data?.length || 0,
+        hasData: !!response.data,
+        pagination: response.pagination
+      });
+  
+      // If we got no data but expected some, log it
+      if (!response.data || response.data.length === 0) {
+        console.warn('⚠️ No groups returned from API. This could mean:');
+        console.warn('1. No groups match the filters');
+        console.warn('2. Backend is not processing filters correctly');
+        console.warn('3. Database query issue');
+      }
+  
       // Process the response to normalize creator data if needed
       if (response.data && Array.isArray(response.data)) {
-        console.log(`✅ Received ${response.data.length} groups from API`);
-        
+        console.log(`✅ Processing ${response.data.length} groups`);
+  
         // Map through groups to normalize creator data
         response.data = response.data.map(group => {
           // If there's a created_by ID but no creator object
           if (group.created_by && !group.creator) {
             // The API might return creator under a different name
             const creatorData = group.owner || group.admin || group.created_by_user;
-            
+  
             if (creatorData) {
               group.creator = creatorData;
               console.log(`🔄 Normalized creator data for group ${group.id}`);
@@ -929,23 +927,24 @@ class FetchApiClient {
           return group;
         });
       }
-      
+  
+      // Handle both paginated and simple array responses
       if (Array.isArray(response.data)) {
         return {
           success: true,
           message: 'Groups fetched successfully',
           data: response.data,
-          pagination: {
-            current_page: 1,
+          pagination: response.pagination || {
+            current_page: params?.page || 1,
             per_page: response.data.length,
             total: response.data.length,
             total_pages: 1,
             has_next: false,
             has_previous: false
           }
-        }
+        };
       }
-      
+  
       return response as PaginatedResponse;
     } catch (error) {
       console.error('❌ Get groups error:', error);

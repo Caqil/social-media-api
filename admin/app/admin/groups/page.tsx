@@ -255,16 +255,11 @@ function GroupsPage() {
 
     return normalizedGroups;
   };
-
-  // Fetch groups
-  // Updated fetchGroups function with proper filter handling
-
   const fetchGroups = useCallback(async (filters = state.filters) => {
     try {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
-      // Debug the filters being applied
-      console.log("🔍 Applying filters:", filters);
+      console.log("🔍 fetchGroups called with filters:", filters);
 
       const params: any = {
         page: filters.page,
@@ -274,24 +269,21 @@ function GroupsPage() {
       };
 
       // Add search filter
-      if (filters.search) params.search = filters.search;
+      if (filters.search && filters.search.trim() !== "") {
+        params.search = filters.search.trim();
+        console.log(`🔍 Adding search filter: "${params.search}"`);
+      }
 
       // Add type filter - ensure it's in the format the API expects
       if (filters.type && filters.type !== "all") {
-        // The API might expect 'type' in a specific format
-        // It could be lowercase, uppercase, or an enum value
         params.type = filters.type.toLowerCase();
-
-        // Debug the type parameter
-        console.log(`🔍 Setting type parameter to: ${params.type}`);
+        console.log(`🔍 Adding type filter: "${params.type}"`);
       }
 
       // Add category filter
       if (filters.category && filters.category !== "all") {
         params.category = filters.category;
-
-        // Debug the category parameter
-        console.log(`🔍 Setting category parameter to: ${params.category}`);
+        console.log(`🔍 Adding category filter: "${params.category}"`);
       }
 
       // Handle status filter - convert to is_active parameter
@@ -301,19 +293,14 @@ function GroupsPage() {
         } else if (filters.status === "inactive") {
           params.is_active = false;
         }
-
-        // Debug the status parameter
-        console.log(`🔍 Setting is_active parameter to: ${params.is_active}`);
+        console.log(`🔍 Adding status filter: is_active = ${params.is_active}`);
       }
 
       // Handle verification filter - ensure boolean conversion
       if (filters.is_verified && filters.is_verified !== "all") {
-        // Convert string 'true'/'false' to boolean
         params.is_verified = filters.is_verified === "true";
-
-        // Debug the verification parameter
         console.log(
-          `🔍 Setting is_verified parameter to: ${params.is_verified}`
+          `🔍 Adding verification filter: is_verified = ${params.is_verified}`
         );
       }
 
@@ -321,34 +308,76 @@ function GroupsPage() {
       if (filters.sort_by) {
         params.sort_by = filters.sort_by;
         params.sort_order = filters.sort_order || "desc";
+        console.log(`🔍 Adding sort: ${params.sort_by} ${params.sort_order}`);
       }
 
-      console.log("📡 Fetching groups with params:", params);
+      console.log("📡 Final params being sent to API:", params);
+
       const response = await apiClient.getGroups(params);
 
-      // Check response structure for debugging
-      if (response.data && Array.isArray(response.data)) {
-        console.log(`✅ Received ${response.data.length} groups from API`);
-
-        // Check if filters were applied correctly
-        if (filters.type !== "all" && response.data.length > 0) {
-          const typeCounts = countByProperty(response.data, "type");
-          console.log("📊 Group types in response:", typeCounts);
-        }
-
-        if (filters.category !== "all" && response.data.length > 0) {
-          const categoryCounts = countByProperty(response.data, "category");
-          console.log("📊 Group categories in response:", categoryCounts);
-        }
-      } else {
-        console.warn("⚠️ Response data is not an array or is empty");
-      }
+      console.log("📥 API response received:", {
+        success: response.success,
+        dataCount: response.data?.length || 0,
+        pagination: response.pagination,
+        hasFilters: Object.keys(params).length > 4, // More than just basic params
+      });
 
       // Process groups to ensure all have creator data
       let groupsWithCreatorData = response.data || [];
-      groupsWithCreatorData = await processGroupsWithCreatorData(
-        groupsWithCreatorData
-      );
+
+      if (groupsWithCreatorData.length > 0) {
+        console.log(`✅ Received ${groupsWithCreatorData.length} groups`);
+
+        // Log some sample data for debugging
+        const sampleGroup = groupsWithCreatorData[0];
+        console.log("📊 Sample group structure:", {
+          id: sampleGroup.id,
+          name: sampleGroup.name,
+          type: sampleGroup.type,
+          category: sampleGroup.category,
+          is_active: sampleGroup.is_active,
+          is_verified: sampleGroup.is_verified,
+          hasCreator: !!sampleGroup.creator,
+        });
+
+        // Check if filters were applied correctly by analyzing the returned data
+        if (params.type) {
+          const typeMatches = groupsWithCreatorData.filter(
+            (g) => g.type?.toLowerCase() === params.type.toLowerCase()
+          ).length;
+          console.log(
+            `🔍 Type filter check: ${typeMatches}/${groupsWithCreatorData.length} groups match type "${params.type}"`
+          );
+        }
+
+        if (params.is_active !== undefined) {
+          const activeMatches = groupsWithCreatorData.filter(
+            (g) => g.is_active === params.is_active
+          ).length;
+          console.log(
+            `🔍 Status filter check: ${activeMatches}/${groupsWithCreatorData.length} groups match is_active = ${params.is_active}`
+          );
+        }
+
+        if (params.is_verified !== undefined) {
+          const verifiedMatches = groupsWithCreatorData.filter(
+            (g) => g.is_verified === params.is_verified
+          ).length;
+          console.log(
+            `🔍 Verification filter check: ${verifiedMatches}/${groupsWithCreatorData.length} groups match is_verified = ${params.is_verified}`
+          );
+        }
+
+        groupsWithCreatorData = await processGroupsWithCreatorData(
+          groupsWithCreatorData
+        );
+      } else {
+        console.warn("⚠️ No groups returned. Possible reasons:");
+        console.warn("1. No groups exist");
+        console.warn("2. Filters are too restrictive");
+        console.warn("3. Backend filtering not working");
+        console.warn("4. Database connection issue");
+      }
 
       setState((prev) => ({
         ...prev,
@@ -365,6 +394,25 @@ function GroupsPage() {
       }));
     }
   }, []);
+
+  // Enhanced filter change handler with debugging
+  const handleFilterChange = (key: string, value: any) => {
+    console.log(`🔄 Filter changed: ${key} = "${value}"`);
+
+    const newFilters = { ...state.filters, [key]: value, page: 1 };
+
+    console.log("🔄 New filter state:", newFilters);
+
+    setState((prev) => ({ ...prev, filters: newFilters }));
+
+    // Don't fetch immediately for search to allow debouncing
+    if (key !== "search") {
+      console.log("🔄 Triggering immediate fetch for non-search filter");
+      fetchGroups(newFilters);
+    } else {
+      console.log("🔄 Search filter changed, waiting for debounce...");
+    }
+  };
 
   // Helper function to count occurrences of property values
   const countByProperty = (array: any[], property: string) => {
@@ -413,16 +461,6 @@ function GroupsPage() {
 
     return () => clearTimeout(timeoutId);
   }, [state.filters.search, fetchGroups]);
-
-  // Handle filter changes
-  const handleFilterChange = (key: string, value: any) => {
-    const newFilters = { ...state.filters, [key]: value, page: 1 };
-    setState((prev) => ({ ...prev, filters: newFilters }));
-
-    if (key !== "search") {
-      fetchGroups(newFilters);
-    }
-  };
 
   // Handle pagination
   const handlePageChange = (page: number) => {

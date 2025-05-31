@@ -1694,15 +1694,821 @@ func (h *AdminHandler) BulkStoryAction(c *gin.Context) {
 	})
 }
 
+// GetAllConversations with enhanced filtering and data structure
+func (h *AdminHandler) GetAllConversations(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	skip := (page - 1) * limit
+
+	ctx := c.Request.Context()
+
+	// Build match filter
+	matchFilter := bson.M{
+		"deleted_at": bson.M{"$exists": false},
+	}
+
+	// Add search filter if provided
+	if search := c.Query("search"); search != "" {
+		matchFilter["$or"] = []bson.M{
+			{"title": bson.M{"$regex": search, "$options": "i"}},
+		}
+	}
+
+	// Add type filter if provided
+	if convType := c.Query("type"); convType != "" && convType != "all" {
+		matchFilter["type"] = convType
+	}
+
+	// Add archived filter if provided
+	if isArchived := c.Query("is_archived"); isArchived != "" && isArchived != "all" {
+		matchFilter["is_archived"] = isArchived == "true"
+	}
+
+	// Add muted filter if provided
+	if isMuted := c.Query("is_muted"); isMuted != "" && isMuted != "all" {
+		matchFilter["is_muted"] = isMuted == "true"
+	}
+
+	// Add date range filters
+	if dateFrom := c.Query("date_from"); dateFrom != "" {
+		if parsedDate, err := time.Parse("2006-01-02", dateFrom); err == nil {
+			matchFilter["created_at"] = bson.M{"$gte": parsedDate}
+		}
+	}
+	if dateTo := c.Query("date_to"); dateTo != "" {
+		if parsedDate, err := time.Parse("2006-01-02", dateTo); err == nil {
+			if existingDateFilter, exists := matchFilter["created_at"]; exists {
+				if dateFilter, ok := existingDateFilter.(bson.M); ok {
+					dateFilter["$lte"] = parsedDate.Add(24 * time.Hour)
+				}
+			} else {
+				matchFilter["created_at"] = bson.M{"$lte": parsedDate.Add(24 * time.Hour)}
+			}
+		}
+	}
+
+	// Sort configuration
+	sortField := c.DefaultQuery("sort_by", "last_message_at")
+	sortOrder := c.DefaultQuery("sort_order", "desc")
+	sortValue := -1
+	if sortOrder == "asc" {
+		sortValue = 1
+	}
+
+	// Build aggregation pipeline
+	pipeline := []bson.M{
+		{
+			"$match": matchFilter,
+		},
+		{
+			"$lookup": bson.M{
+				"from": "users",
+				"let":  bson.M{"participant_ids": "$participant_ids"},
+				"pipeline": []bson.M{
+					{
+						"$match": bson.M{
+							"$expr": bson.M{"$in": []interface{}{"$_id", "$$participant_ids"}},
+						},
+					},
+					{
+						"$project": bson.M{
+							"id":              bson.M{"$toString": "$_id"},
+							"username":        1,
+							"first_name":      1,
+							"last_name":       1,
+							"profile_picture": 1,
+							"is_verified":     1,
+						},
+					},
+				},
+				"as": "participants",
+			},
+		},
+		{
+			"$lookup": bson.M{
+				"from":         "messages",
+				"localField":   "last_message_id",
+				"foreignField": "_id",
+				"as":           "last_message_data",
+			},
+		},
+		{
+			"$lookup": bson.M{
+				"from": "users",
+				"let":  bson.M{"sender_id": bson.M{"$arrayElemAt": []interface{}{"$last_message_data.sender_id", 0}}},
+				"pipeline": []bson.M{
+					{
+						"$match": bson.M{
+							"$expr": bson.M{"$eq": []interface{}{"$_id", "$$sender_id"}},
+						},
+					},
+					{
+						"$project": bson.M{
+							"id":       bson.M{"$toString": "$_id"},
+							"username": 1,
+						},
+					},
+				},
+				"as": "last_message_sender",
+			},
+		},
+		{
+			"$addFields": bson.M{
+				"id": bson.M{"$toString": "$_id"},
+				"participant_ids": bson.M{
+					"$map": bson.M{
+						"input": "$participant_ids",
+						"as":    "pid",
+						"in":    bson.M{"$toString": "$$pid"},
+					},
+				},
+				"last_message": bson.M{
+					"$cond": bson.M{
+						"if": bson.M{"$gt": []interface{}{bson.M{"$size": "$last_message_data"}, 0}},
+						"then": bson.M{
+							"id":           bson.M{"$toString": bson.M{"$arrayElemAt": []interface{}{"$last_message_data._id", 0}}},
+							"content":      bson.M{"$arrayElemAt": []interface{}{"$last_message_data.content", 0}},
+							"content_type": bson.M{"$arrayElemAt": []interface{}{"$last_message_data.content_type", 0}},
+							"created_at":   bson.M{"$arrayElemAt": []interface{}{"$last_message_data.created_at", 0}},
+							"sender": bson.M{
+								"$cond": bson.M{
+									"if":   bson.M{"$gt": []interface{}{bson.M{"$size": "$last_message_sender"}, 0}},
+									"then": bson.M{"$arrayElemAt": []interface{}{"$last_message_sender", 0}},
+									"else": nil,
+								},
+							},
+						},
+						"else": nil,
+					},
+				},
+			},
+		},
+		{
+			"$project": bson.M{
+				"_id":             0,
+				"id":              1,
+				"type":            1,
+				"title":           1,
+				"avatar":          1,
+				"participant_ids": 1,
+				"last_message_id": bson.M{"$toString": "$last_message_id"},
+				"last_message_at": 1,
+				"is_archived":     1,
+				"is_muted":        1,
+				"unread_count":    1,
+				"created_at":      1,
+				"participants":    1,
+				"last_message":    1,
+			},
+		},
+		{
+			"$sort": bson.M{sortField: sortValue},
+		},
+		{
+			"$skip": skip,
+		},
+		{
+			"$limit": limit,
+		},
+	}
+
+	cursor, err := h.db.Collection("conversations").Aggregate(ctx, pipeline)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to get conversations", err)
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var conversations []bson.M
+	if err := cursor.All(ctx, &conversations); err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to decode conversations", err)
+		return
+	}
+
+	// Get total count for pagination
+	countPipeline := []bson.M{
+		{
+			"$match": matchFilter,
+		},
+		{
+			"$count": "total",
+		},
+	}
+
+	countCursor, err := h.db.Collection("conversations").Aggregate(ctx, countPipeline)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to count conversations", err)
+		return
+	}
+	defer countCursor.Close(ctx)
+
+	var countResult []bson.M
+	total := int64(0)
+	if err := countCursor.All(ctx, &countResult); err == nil && len(countResult) > 0 {
+		if count, ok := countResult[0]["total"].(int32); ok {
+			total = int64(count)
+		}
+	}
+
+	// Create pagination metadata
+	pagination := &utils.PaginationMeta{
+		CurrentPage: page,
+		PerPage:     limit,
+		Total:       total,
+		TotalPages:  int((total + int64(limit) - 1) / int64(limit)),
+		HasNext:     int64(page*limit) < total,
+		HasPrevious: page > 1,
+	}
+
+	links := h.createPaginationLinks(c, pagination)
+	utils.PaginatedSuccessResponse(c, "Conversations retrieved successfully", conversations, *pagination, links)
+}
+
+// GetConversationMessages retrieves all messages in a specific conversation
+func (h *AdminHandler) GetConversationMessages(c *gin.Context) {
+	conversationID := c.Param("id")
+	objID, err := primitive.ObjectIDFromHex(conversationID)
+	if err != nil {
+		utils.BadRequestResponse(c, "Invalid conversation ID", nil)
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	skip := (page - 1) * limit
+
+	ctx := c.Request.Context()
+
+	// Build aggregation pipeline for messages
+	pipeline := []bson.M{
+		{
+			"$match": bson.M{
+				"conversation_id": objID,
+				"deleted_at":      bson.M{"$exists": false},
+			},
+		},
+		{
+			"$lookup": bson.M{
+				"from":         "users",
+				"localField":   "sender_id",
+				"foreignField": "_id",
+				"as":           "sender_data",
+			},
+		},
+		{
+			"$addFields": bson.M{
+				"id": bson.M{"$toString": "$_id"},
+				"sender": bson.M{
+					"$cond": bson.M{
+						"if": bson.M{"$gt": []interface{}{bson.M{"$size": "$sender_data"}, 0}},
+						"then": bson.M{
+							"id":              bson.M{"$toString": bson.M{"$arrayElemAt": []interface{}{"$sender_data._id", 0}}},
+							"username":        bson.M{"$arrayElemAt": []interface{}{"$sender_data.username", 0}},
+							"first_name":      bson.M{"$arrayElemAt": []interface{}{"$sender_data.first_name", 0}},
+							"last_name":       bson.M{"$arrayElemAt": []interface{}{"$sender_data.last_name", 0}},
+							"profile_picture": bson.M{"$arrayElemAt": []interface{}{"$sender_data.profile_picture", 0}},
+						},
+						"else": nil,
+					},
+				},
+			},
+		},
+		{
+			"$project": bson.M{
+				"_id":          0,
+				"id":           1,
+				"content":      1,
+				"content_type": 1,
+				"media_url":    1,
+				"file_name":    1,
+				"file_size":    1,
+				"is_read":      1,
+				"read_at":      1,
+				"is_edited":    1,
+				"edited_at":    1,
+				"created_at":   1,
+				"sender":       1,
+			},
+		},
+		{
+			"$sort": bson.M{"created_at": -1},
+		},
+		{
+			"$skip": skip,
+		},
+		{
+			"$limit": limit,
+		},
+	}
+
+	cursor, err := h.db.Collection("messages").Aggregate(ctx, pipeline)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to get conversation messages", err)
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var messages []bson.M
+	if err := cursor.All(ctx, &messages); err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to decode messages", err)
+		return
+	}
+
+	// Get total count
+	total, _ := h.db.Collection("messages").CountDocuments(ctx, bson.M{
+		"conversation_id": objID,
+		"deleted_at":      bson.M{"$exists": false},
+	})
+
+	pagination := &utils.PaginationMeta{
+		CurrentPage: page,
+		PerPage:     limit,
+		Total:       total,
+		TotalPages:  int((total + int64(limit) - 1) / int64(limit)),
+		HasNext:     int64(page*limit) < total,
+		HasPrevious: page > 1,
+	}
+
+	links := h.createPaginationLinks(c, pagination)
+	utils.PaginatedSuccessResponse(c, "Conversation messages retrieved successfully", messages, *pagination, links)
+}
+
+// GetConversationAnalytics provides analytics for a specific conversation
+func (h *AdminHandler) GetConversationAnalytics(c *gin.Context) {
+	conversationID := c.Param("id")
+	objID, err := primitive.ObjectIDFromHex(conversationID)
+	if err != nil {
+		utils.BadRequestResponse(c, "Invalid conversation ID", nil)
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// Get conversation details
+	var conversation bson.M
+	err = h.db.Collection("conversations").FindOne(ctx, bson.M{
+		"_id":        objID,
+		"deleted_at": bson.M{"$exists": false},
+	}).Decode(&conversation)
+	if err != nil {
+		utils.NotFoundResponse(c, "Conversation not found")
+		return
+	}
+
+	// Get message statistics
+	messageStatsPipeline := []bson.M{
+		{
+			"$match": bson.M{
+				"conversation_id": objID,
+				"deleted_at":      bson.M{"$exists": false},
+			},
+		},
+		{
+			"$group": bson.M{
+				"_id":            nil,
+				"total_messages": bson.M{"$sum": 1},
+				"text_messages":  bson.M{"$sum": bson.M{"$cond": []interface{}{bson.M{"$eq": []interface{}{"$content_type", "text"}}, 1, 0}}},
+				"media_messages": bson.M{"$sum": bson.M{"$cond": []interface{}{bson.M{"$ne": []interface{}{"$content_type", "text"}}, 1, 0}}},
+				"read_messages":  bson.M{"$sum": bson.M{"$cond": []interface{}{"$is_read", 1, 0}}},
+				"avg_length":     bson.M{"$avg": bson.M{"$strLenCP": "$content"}},
+			},
+		},
+	}
+
+	cursor, err := h.db.Collection("messages").Aggregate(ctx, messageStatsPipeline)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to get message statistics", err)
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var messageStats []bson.M
+	cursor.All(ctx, &messageStats)
+
+	// Get activity by day (last 30 days)
+	activityPipeline := []bson.M{
+		{
+			"$match": bson.M{
+				"conversation_id": objID,
+				"created_at":      bson.M{"$gte": time.Now().AddDate(0, 0, -30)},
+				"deleted_at":      bson.M{"$exists": false},
+			},
+		},
+		{
+			"$group": bson.M{
+				"_id": bson.M{
+					"$dateToString": bson.M{
+						"format": "%Y-%m-%d",
+						"date":   "$created_at",
+					},
+				},
+				"message_count": bson.M{"$sum": 1},
+			},
+		},
+		{
+			"$sort": bson.M{"_id": 1},
+		},
+	}
+
+	activityCursor, err := h.db.Collection("messages").Aggregate(ctx, activityPipeline)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to get activity statistics", err)
+		return
+	}
+	defer activityCursor.Close(ctx)
+
+	var activityStats []bson.M
+	activityCursor.All(ctx, &activityStats)
+
+	// Get participant activity
+	participantActivityPipeline := []bson.M{
+		{
+			"$match": bson.M{
+				"conversation_id": objID,
+				"deleted_at":      bson.M{"$exists": false},
+			},
+		},
+		{
+			"$group": bson.M{
+				"_id":           "$sender_id",
+				"message_count": bson.M{"$sum": 1},
+				"last_message":  bson.M{"$max": "$created_at"},
+			},
+		},
+		{
+			"$lookup": bson.M{
+				"from":         "users",
+				"localField":   "_id",
+				"foreignField": "_id",
+				"as":           "user",
+			},
+		},
+		{
+			"$addFields": bson.M{
+				"username": bson.M{"$arrayElemAt": []interface{}{"$user.username", 0}},
+			},
+		},
+		{
+			"$sort": bson.M{"message_count": -1},
+		},
+	}
+
+	participantCursor, err := h.db.Collection("messages").Aggregate(ctx, participantActivityPipeline)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to get participant activity", err)
+		return
+	}
+	defer participantCursor.Close(ctx)
+
+	var participantActivity []bson.M
+	participantCursor.All(ctx, &participantActivity)
+
+	analytics := gin.H{
+		"conversation_id":      conversationID,
+		"conversation_type":    conversation["type"],
+		"participant_count":    len(conversation["participant_ids"].(primitive.A)),
+		"message_statistics":   messageStats,
+		"activity_by_day":      activityStats,
+		"participant_activity": participantActivity,
+		"generated_at":         time.Now(),
+	}
+
+	utils.OkResponse(c, "Conversation analytics retrieved successfully", analytics)
+}
+
+// DeleteConversation deletes a conversation and optionally its messages
+func (h *AdminHandler) DeleteConversation(c *gin.Context) {
+	conversationID := c.Param("id")
+	objID, err := primitive.ObjectIDFromHex(conversationID)
+	if err != nil {
+		utils.BadRequestResponse(c, "Invalid conversation ID", nil)
+		return
+	}
+
+	var req struct {
+		Reason         string `json:"reason" binding:"required"`
+		DeleteMessages bool   `json:"delete_messages"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ValidationErrorResponse(c, err)
+		return
+	}
+
+	ctx := c.Request.Context()
+	now := time.Now()
+
+	// Delete conversation
+	_, err = h.db.Collection("conversations").UpdateOne(
+		ctx,
+		bson.M{"_id": objID},
+		bson.M{
+			"$set": bson.M{
+				"deleted_at": now,
+				"updated_at": now,
+			},
+		},
+	)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to delete conversation", err)
+		return
+	}
+
+	// Optionally delete all messages in the conversation
+	if req.DeleteMessages {
+		_, err = h.db.Collection("messages").UpdateMany(
+			ctx,
+			bson.M{"conversation_id": objID},
+			bson.M{
+				"$set": bson.M{
+					"deleted_at": now,
+					"updated_at": now,
+				},
+			},
+		)
+		if err != nil {
+			// Log error but don't fail the request
+			fmt.Printf("Failed to delete conversation messages: %v\n", err)
+		}
+	}
+
+	h.logAdminActivity(c, "conversation_deletion", "Deleted conversation ID: "+conversationID+" Reason: "+req.Reason)
+	utils.OkResponse(c, "Conversation deleted successfully", gin.H{
+		"conversation_id":  conversationID,
+		"reason":           req.Reason,
+		"messages_deleted": req.DeleteMessages,
+	})
+}
+
+// GetConversationReports gets reports related to a specific conversation
+func (h *AdminHandler) GetConversationReports(c *gin.Context) {
+	conversationID := c.Param("id")
+	objID, err := primitive.ObjectIDFromHex(conversationID)
+	if err != nil {
+		utils.BadRequestResponse(c, "Invalid conversation ID", nil)
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// Get reports for messages in this conversation
+	pipeline := []bson.M{
+		{
+			"$lookup": bson.M{
+				"from":         "messages",
+				"localField":   "target_id",
+				"foreignField": "_id",
+				"as":           "message",
+			},
+		},
+		{
+			"$match": bson.M{
+				"message.conversation_id": objID,
+				"target_type":             "message",
+				"deleted_at":              bson.M{"$exists": false},
+			},
+		},
+		{
+			"$lookup": bson.M{
+				"from":         "users",
+				"localField":   "reporter_id",
+				"foreignField": "_id",
+				"as":           "reporter",
+			},
+		},
+		{
+			"$addFields": bson.M{
+				"id": bson.M{"$toString": "$_id"},
+				"reporter": bson.M{
+					"$cond": bson.M{
+						"if":   bson.M{"$gt": []interface{}{bson.M{"$size": "$reporter"}, 0}},
+						"then": bson.M{"$arrayElemAt": []interface{}{"$reporter", 0}},
+						"else": nil,
+					},
+				},
+				"message_content": bson.M{"$arrayElemAt": []interface{}{"$message.content", 0}},
+			},
+		},
+		{
+			"$sort": bson.M{"created_at": -1},
+		},
+	}
+
+	cursor, err := h.db.Collection("reports").Aggregate(ctx, pipeline)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to get conversation reports", err)
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var reports []bson.M
+	if err := cursor.All(ctx, &reports); err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to decode reports", err)
+		return
+	}
+
+	utils.OkResponse(c, "Conversation reports retrieved successfully", reports)
+}
+
 // Message Management
 func (h *AdminHandler) GetAllMessages(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	skip := (page - 1) * limit
 
-	messages, pagination, err := h.adminService.GetAllMessages(c.Request.Context(), page, limit)
+	ctx := c.Request.Context()
+
+	// Build match filter
+	matchFilter := bson.M{
+		"deleted_at": bson.M{"$exists": false},
+	}
+
+	// Add search filter if provided
+	if search := c.Query("search"); search != "" {
+		matchFilter["$or"] = []bson.M{
+			{"content": bson.M{"$regex": search, "$options": "i"}},
+			{"file_name": bson.M{"$regex": search, "$options": "i"}},
+		}
+	}
+
+	// Add conversation_id filter if provided
+	if conversationID := c.Query("conversation_id"); conversationID != "" && conversationID != "all" {
+		if objID, err := primitive.ObjectIDFromHex(conversationID); err == nil {
+			matchFilter["conversation_id"] = objID
+		}
+	}
+
+	// Add content_type filter if provided
+	if contentType := c.Query("content_type"); contentType != "" && contentType != "all" {
+		matchFilter["content_type"] = contentType
+	}
+
+	// Add is_read filter if provided
+	if isRead := c.Query("is_read"); isRead != "" && isRead != "all" {
+		matchFilter["is_read"] = isRead == "true"
+	}
+
+	// Add date range filters if provided
+	if dateFrom := c.Query("date_from"); dateFrom != "" {
+		if parsedDate, err := time.Parse("2006-01-02", dateFrom); err == nil {
+			matchFilter["created_at"] = bson.M{"$gte": parsedDate}
+		}
+	}
+	if dateTo := c.Query("date_to"); dateTo != "" {
+		if parsedDate, err := time.Parse("2006-01-02", dateTo); err == nil {
+			if existingDateFilter, exists := matchFilter["created_at"]; exists {
+				if dateFilter, ok := existingDateFilter.(bson.M); ok {
+					dateFilter["$lte"] = parsedDate.Add(24 * time.Hour)
+				}
+			} else {
+				matchFilter["created_at"] = bson.M{"$lte": parsedDate.Add(24 * time.Hour)}
+			}
+		}
+	}
+
+	// Sort configuration
+	sortField := c.DefaultQuery("sort_by", "created_at")
+	sortOrder := c.DefaultQuery("sort_order", "desc")
+	sortValue := -1
+	if sortOrder == "asc" {
+		sortValue = 1
+	}
+
+	// Build aggregation pipeline with proper data transformation
+	pipeline := []bson.M{
+		{
+			"$match": matchFilter,
+		},
+		{
+			"$lookup": bson.M{
+				"from":         "users",
+				"localField":   "sender_id",
+				"foreignField": "_id",
+				"as":           "sender_data",
+			},
+		},
+		{
+			"$lookup": bson.M{
+				"from":         "conversations",
+				"localField":   "conversation_id",
+				"foreignField": "_id",
+				"as":           "conversation_data",
+			},
+		},
+		{
+			"$addFields": bson.M{
+				"id": bson.M{"$toString": "$_id"},
+				"sender": bson.M{
+					"$cond": bson.M{
+						"if": bson.M{"$gt": []interface{}{bson.M{"$size": "$sender_data"}, 0}},
+						"then": bson.M{
+							"id":              bson.M{"$toString": bson.M{"$arrayElemAt": []interface{}{"$sender_data._id", 0}}},
+							"username":        bson.M{"$arrayElemAt": []interface{}{"$sender_data.username", 0}},
+							"email":           bson.M{"$arrayElemAt": []interface{}{"$sender_data.email", 0}},
+							"first_name":      bson.M{"$arrayElemAt": []interface{}{"$sender_data.first_name", 0}},
+							"last_name":       bson.M{"$arrayElemAt": []interface{}{"$sender_data.last_name", 0}},
+							"profile_picture": bson.M{"$arrayElemAt": []interface{}{"$sender_data.profile_picture", 0}},
+							"is_verified":     bson.M{"$arrayElemAt": []interface{}{"$sender_data.is_verified", 0}},
+						},
+						"else": nil,
+					},
+				},
+				"conversation": bson.M{
+					"$cond": bson.M{
+						"if": bson.M{"$gt": []interface{}{bson.M{"$size": "$conversation_data"}, 0}},
+						"then": bson.M{
+							"id":                bson.M{"$toString": bson.M{"$arrayElemAt": []interface{}{"$conversation_data._id", 0}}},
+							"type":              bson.M{"$arrayElemAt": []interface{}{"$conversation_data.type", 0}},
+							"title":             bson.M{"$arrayElemAt": []interface{}{"$conversation_data.title", 0}},
+							"participant_count": bson.M{"$size": bson.M{"$arrayElemAt": []interface{}{"$conversation_data.participant_ids", 0}}},
+						},
+						"else": nil,
+					},
+				},
+				"conversation_id": bson.M{"$toString": "$conversation_id"},
+				"sender_id":       bson.M{"$toString": "$sender_id"},
+				"reply_to_id":     bson.M{"$toString": "$reply_to_id"},
+			},
+		},
+		{
+			"$project": bson.M{
+				"_id":             0,
+				"id":              1,
+				"conversation_id": 1,
+				"sender_id":       1,
+				"content":         1,
+				"content_type":    1,
+				"media_url":       1,
+				"file_name":       1,
+				"file_size":       1,
+				"is_read":         1,
+				"read_at":         1,
+				"is_edited":       1,
+				"edited_at":       1,
+				"reply_to_id":     1,
+				"created_at":      1,
+				"updated_at":      1,
+				"sender":          1,
+				"conversation":    1,
+			},
+		},
+		{
+			"$sort": bson.M{sortField: sortValue},
+		},
+		{
+			"$skip": skip,
+		},
+		{
+			"$limit": limit,
+		},
+	}
+
+	cursor, err := h.db.Collection("messages").Aggregate(ctx, pipeline)
 	if err != nil {
 		utils.InternalServerErrorResponse(c, "Failed to get messages", err)
 		return
+	}
+	defer cursor.Close(ctx)
+
+	var messages []bson.M
+	if err := cursor.All(ctx, &messages); err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to decode messages", err)
+		return
+	}
+
+	// Get total count for pagination
+	countPipeline := []bson.M{
+		{
+			"$match": matchFilter,
+		},
+		{
+			"$count": "total",
+		},
+	}
+
+	countCursor, err := h.db.Collection("messages").Aggregate(ctx, countPipeline)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to count messages", err)
+		return
+	}
+	defer countCursor.Close(ctx)
+
+	var countResult []bson.M
+	total := int64(0)
+	if err := countCursor.All(ctx, &countResult); err == nil && len(countResult) > 0 {
+		if count, ok := countResult[0]["total"].(int32); ok {
+			total = int64(count)
+		}
+	}
+
+	// Create pagination metadata
+	pagination := &utils.PaginationMeta{
+		CurrentPage: page,
+		PerPage:     limit,
+		Total:       total,
+		TotalPages:  int((total + int64(limit) - 1) / int64(limit)),
+		HasNext:     int64(page*limit) < total,
+		HasPrevious: page > 1,
 	}
 
 	links := h.createPaginationLinks(c, pagination)
@@ -1761,46 +2567,100 @@ func (h *AdminHandler) GetMessage(c *gin.Context) {
 	utils.OkResponse(c, "Message retrieved successfully", message)
 }
 
-func (h *AdminHandler) GetAllConversations(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	skip := (page - 1) * limit
-
-	ctx := c.Request.Context()
-	opts := options.Find().SetSkip(int64(skip)).SetLimit(int64(limit)).SetSort(bson.M{"updated_at": -1})
-
-	cursor, err := h.db.Collection("conversations").Find(ctx, bson.M{
-		"deleted_at": bson.M{"$exists": false},
-	}, opts)
-	if err != nil {
-		utils.InternalServerErrorResponse(c, "Failed to get conversations", err)
-		return
+// BulkConversationAction performs bulk operations on conversations
+func (h *AdminHandler) BulkConversationAction(c *gin.Context) {
+	var req struct {
+		ConversationIDs []string `json:"conversation_ids" binding:"required"`
+		Action          string   `json:"action" binding:"required"`
+		Reason          string   `json:"reason"`
 	}
-	defer cursor.Close(ctx)
 
-	var conversations []bson.M
-	if err := cursor.All(ctx, &conversations); err != nil {
-		utils.InternalServerErrorResponse(c, "Failed to decode conversations", err)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ValidationErrorResponse(c, err)
 		return
 	}
 
-	total, _ := h.db.Collection("conversations").CountDocuments(ctx, bson.M{
-		"deleted_at": bson.M{"$exists": false},
+	if len(req.ConversationIDs) > 100 {
+		utils.BadRequestResponse(c, "Maximum 100 conversations allowed per bulk operation", nil)
+		return
+	}
+
+	successCount := 0
+	failureCount := 0
+	var errors []string
+
+	for _, conversationID := range req.ConversationIDs {
+		objID, err := primitive.ObjectIDFromHex(conversationID)
+		if err != nil {
+			failureCount++
+			errors = append(errors, fmt.Sprintf("Conversation %s: invalid ID", conversationID))
+			continue
+		}
+
+		ctx := c.Request.Context()
+		var update bson.M
+
+		switch req.Action {
+		case "archive":
+			update = bson.M{
+				"$set": bson.M{
+					"is_archived": true,
+					"updated_at":  time.Now(),
+				},
+			}
+		case "unarchive":
+			update = bson.M{
+				"$set": bson.M{
+					"is_archived": false,
+					"updated_at":  time.Now(),
+				},
+			}
+		case "mute":
+			update = bson.M{
+				"$set": bson.M{
+					"is_muted":   true,
+					"updated_at": time.Now(),
+				},
+			}
+		case "unmute":
+			update = bson.M{
+				"$set": bson.M{
+					"is_muted":   false,
+					"updated_at": time.Now(),
+				},
+			}
+		case "delete":
+			update = bson.M{
+				"$set": bson.M{
+					"deleted_at": time.Now(),
+					"updated_at": time.Now(),
+				},
+			}
+		default:
+			failureCount++
+			errors = append(errors, fmt.Sprintf("Conversation %s: invalid action", conversationID))
+			continue
+		}
+
+		_, err = h.db.Collection("conversations").UpdateOne(ctx, bson.M{"_id": objID}, update)
+		if err != nil {
+			failureCount++
+			errors = append(errors, fmt.Sprintf("Conversation %s: %v", conversationID, err))
+		} else {
+			successCount++
+		}
+	}
+
+	h.logAdminActivity(c, "bulk_conversation_action", fmt.Sprintf("Bulk %s action: %d succeeded, %d failed", req.Action, successCount, failureCount))
+
+	utils.OkResponse(c, "Bulk conversation action completed", gin.H{
+		"action":        req.Action,
+		"total":         len(req.ConversationIDs),
+		"success_count": successCount,
+		"failure_count": failureCount,
+		"errors":        errors,
 	})
-
-	pagination := &utils.PaginationMeta{
-		CurrentPage: page,
-		PerPage:     limit,
-		Total:       total,
-		TotalPages:  int((total + int64(limit) - 1) / int64(limit)),
-		HasNext:     int64(page*limit) < total,
-		HasPrevious: page > 1,
-	}
-
-	links := h.createPaginationLinks(c, pagination)
-	utils.PaginatedSuccessResponse(c, "Conversations retrieved successfully", conversations, *pagination, links)
 }
-
 func (h *AdminHandler) GetConversation(c *gin.Context) {
 	conversationID := c.Param("id")
 	objID, err := primitive.ObjectIDFromHex(conversationID)
@@ -5348,8 +6208,14 @@ func (h *AdminHandler) UpdateRateLimits(c *gin.Context) {
 }
 
 // Helper functions
-// Helper functions
 func (h *AdminHandler) createPaginationLinks(c *gin.Context, pagination *utils.PaginationMeta) *utils.PaginationLinks {
+	// Defensive check for nil pagination
+	if pagination == nil {
+		return &utils.PaginationLinks{
+			Self: c.Request.URL.Path + "?" + c.Request.URL.Query().Encode(),
+		}
+	}
+
 	baseURL := c.Request.URL.Path
 	query := c.Request.URL.Query()
 
@@ -5378,6 +6244,7 @@ func (h *AdminHandler) createPaginationLinks(c *gin.Context, pagination *utils.P
 
 	return links
 }
+
 func (h *AdminHandler) logAdminActivity(c *gin.Context, activityType, description string) {
 	adminIDValue, exists := c.Get("user_id")
 	if !exists {
@@ -5795,4 +6662,215 @@ func (h *AdminHandler) ActivitiesWebSocket(c *gin.Context) {
 		// In a real implementation, this would listen to events
 		time.Sleep(2 * time.Second)
 	}
+}
+func (h *AdminHandler) CreateUser(c *gin.Context) {
+	var req struct {
+		Username   string `json:"username" binding:"required"`
+		Email      string `json:"email" binding:"required,email"`
+		Password   string `json:"password" binding:"required,min=8"`
+		FirstName  string `json:"first_name"`
+		LastName   string `json:"last_name"`
+		Bio        string `json:"bio"`
+		Role       string `json:"role"`
+		IsActive   bool   `json:"is_active"`
+		IsVerified bool   `json:"is_verified"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ValidationErrorResponse(c, err)
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// Check if username or email already exists
+	existingCount, err := h.db.Collection("users").CountDocuments(ctx, bson.M{
+		"$or": []bson.M{
+			{"username": req.Username},
+			{"email": req.Email},
+		},
+		"deleted_at": bson.M{"$exists": false},
+	})
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to check existing user", err)
+		return
+	}
+	if existingCount > 0 {
+		utils.BadRequestResponse(c, "Username or email already exists", nil)
+		return
+	}
+
+	// Hash password
+	hashedPassword, err := utils.HashPassword(req.Password)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to hash password", err)
+		return
+	}
+
+	// Set default role if not provided
+	if req.Role == "" {
+		req.Role = "user"
+	}
+
+	// Create user document
+	now := time.Now()
+	user := bson.M{
+		"username":           req.Username,
+		"email":              req.Email,
+		"password":           hashedPassword,
+		"first_name":         req.FirstName,
+		"last_name":          req.LastName,
+		"bio":                req.Bio,
+		"role":               req.Role,
+		"is_active":          req.IsActive,
+		"is_verified":        req.IsVerified,
+		"is_suspended":       false,
+		"is_private":         false,
+		"followers_count":    0,
+		"following_count":    0,
+		"posts_count":        0,
+		"email_verified":     req.IsVerified,
+		"phone_verified":     false,
+		"two_factor_enabled": false,
+		"privacy_level":      "public",
+		"login_count":        0,
+		"verification_level": 0,
+		"reputation_score":   0,
+		"created_at":         now,
+		"updated_at":         now,
+	}
+
+	result, err := h.db.Collection("users").InsertOne(ctx, user)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to create user", err)
+		return
+	}
+
+	h.logAdminActivity(c, "user_creation", "Created user: "+req.Username)
+
+	// Return created user (without password)
+	user["_id"] = result.InsertedID
+	delete(user, "password")
+
+	utils.CreatedResponse(c, "User created successfully", user)
+}
+
+// UpdateUser updates an existing user (admin only)
+func (h *AdminHandler) UpdateUser(c *gin.Context) {
+	userID := c.Param("id")
+	objID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		utils.BadRequestResponse(c, "Invalid user ID", nil)
+		return
+	}
+
+	var req struct {
+		Username   *string `json:"username"`
+		Email      *string `json:"email"`
+		FirstName  *string `json:"first_name"`
+		LastName   *string `json:"last_name"`
+		Bio        *string `json:"bio"`
+		Role       *string `json:"role"`
+		IsActive   *bool   `json:"is_active"`
+		IsVerified *bool   `json:"is_verified"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ValidationErrorResponse(c, err)
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// Build update document
+	updateDoc := bson.M{
+		"updated_at": time.Now(),
+	}
+
+	if req.Username != nil {
+		// Check if username is already taken by another user
+		existingCount, err := h.db.Collection("users").CountDocuments(ctx, bson.M{
+			"username":   *req.Username,
+			"_id":        bson.M{"$ne": objID},
+			"deleted_at": bson.M{"$exists": false},
+		})
+		if err != nil {
+			utils.InternalServerErrorResponse(c, "Failed to check username availability", err)
+			return
+		}
+		if existingCount > 0 {
+			utils.BadRequestResponse(c, "Username already exists", nil)
+			return
+		}
+		updateDoc["username"] = *req.Username
+	}
+
+	if req.Email != nil {
+		// Check if email is already taken by another user
+		existingCount, err := h.db.Collection("users").CountDocuments(ctx, bson.M{
+			"email":      *req.Email,
+			"_id":        bson.M{"$ne": objID},
+			"deleted_at": bson.M{"$exists": false},
+		})
+		if err != nil {
+			utils.InternalServerErrorResponse(c, "Failed to check email availability", err)
+			return
+		}
+		if existingCount > 0 {
+			utils.BadRequestResponse(c, "Email already exists", nil)
+			return
+		}
+		updateDoc["email"] = *req.Email
+	}
+
+	if req.FirstName != nil {
+		updateDoc["first_name"] = *req.FirstName
+	}
+	if req.LastName != nil {
+		updateDoc["last_name"] = *req.LastName
+	}
+	if req.Bio != nil {
+		updateDoc["bio"] = *req.Bio
+	}
+	if req.Role != nil {
+		updateDoc["role"] = *req.Role
+	}
+	if req.IsActive != nil {
+		updateDoc["is_active"] = *req.IsActive
+	}
+	if req.IsVerified != nil {
+		updateDoc["is_verified"] = *req.IsVerified
+		updateDoc["email_verified"] = *req.IsVerified
+	}
+
+	// Update user
+	result, err := h.db.Collection("users").UpdateOne(
+		ctx,
+		bson.M{"_id": objID, "deleted_at": bson.M{"$exists": false}},
+		bson.M{"$set": updateDoc},
+	)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to update user", err)
+		return
+	}
+
+	if result.MatchedCount == 0 {
+		utils.NotFoundResponse(c, "User not found")
+		return
+	}
+
+	h.logAdminActivity(c, "user_update", "Updated user ID: "+userID)
+
+	// Get updated user
+	var updatedUser bson.M
+	err = h.db.Collection("users").FindOne(ctx, bson.M{"_id": objID}).Decode(&updatedUser)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to fetch updated user", err)
+		return
+	}
+
+	// Remove password from response
+	delete(updatedUser, "password")
+
+	utils.OkResponse(c, "User updated successfully", updatedUser)
 }

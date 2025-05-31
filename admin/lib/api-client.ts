@@ -1,4 +1,4 @@
-// lib/api-client.ts - Complete API Client Based on Go Routes
+// lib/api-client.ts - Complete Updated API Client with Conversation Management
 import { DashboardStats, User } from '@/types/admin'
 
 export interface ApiResponse<T = any> {
@@ -450,6 +450,7 @@ class FetchApiClient {
       throw error
     }
   }
+
   async getUsersByIds(userIds: string[]): Promise<ApiResponse<User[]>> {
     if (!userIds || userIds.length === 0) {
       return {
@@ -499,6 +500,7 @@ class FetchApiClient {
       throw error;
     }
   }
+
   async searchUsers(params?: any): Promise<PaginatedResponse> {
     try {
       const response = await this.get<any>('/api/v1/admin/users/search', params)
@@ -846,6 +848,162 @@ class FetchApiClient {
     return this.post('/api/v1/admin/comments/bulk/actions', data);
   }
 
+  // ==================== MESSAGE MANAGEMENT (ENHANCED) ====================
+  async getMessages(params?: {
+    page?: number
+    limit?: number
+    search?: string
+    conversation_id?: string
+    content_type?: string
+    is_read?: string
+    date_from?: string
+    date_to?: string
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
+  }): Promise<PaginatedResponse> {
+    try {
+      console.log('📡 Fetching messages with params:', params);
+      const response = await this.get<any>('/api/v1/admin/messages', params);
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Messages fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse;
+    } catch (error) {
+      console.error('❌ Get messages error:', error);
+      throw error;
+    }
+  }
+
+  async getMessage(id: string): Promise<ApiResponse<any>> {
+    return this.get(`/api/v1/admin/messages/${id}`)
+  }
+
+  async deleteMessage(id: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.delete(`/api/v1/admin/messages/${id}`, { reason })
+  }
+
+  async bulkMessageAction(data: { 
+    message_ids: string[]
+    action: string
+    reason?: string 
+  }): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/messages/bulk/actions', data)
+  }
+
+  // ==================== CONVERSATION MANAGEMENT (NEW) ====================
+  async getConversations(params?: {
+    page?: number
+    limit?: number
+    search?: string
+    type?: string
+    is_archived?: boolean
+    is_muted?: boolean
+    date_from?: string
+    date_to?: string
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
+  }): Promise<PaginatedResponse> {
+    try {
+      console.log('📡 Fetching conversations with params:', params);
+      const response = await this.get<any>('/api/v1/admin/conversations', params);
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Conversations fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse;
+    } catch (error) {
+      console.error('❌ Get conversations error:', error);
+      throw error;
+    }
+  }
+
+  async getConversation(id: string): Promise<ApiResponse<any>> {
+    return this.get(`/api/v1/admin/conversations/${id}`)
+  }
+
+  async getConversationMessages(conversationId: string, params?: {
+    page?: number
+    limit?: number
+  }): Promise<PaginatedResponse> {
+    try {
+      console.log(`📡 Fetching messages for conversation ${conversationId}`);
+      const response = await this.get<any>(`/api/v1/admin/conversations/${conversationId}/messages`, params);
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Conversation messages fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
+        }
+      }
+      
+      return response as PaginatedResponse;
+    } catch (error) {
+      console.error('❌ Get conversation messages error:', error);
+      throw error;
+    }
+  }
+
+  async getConversationAnalytics(conversationId: string): Promise<ApiResponse<any>> {
+    console.log(`📡 Fetching analytics for conversation ${conversationId}`);
+    return this.get(`/api/v1/admin/conversations/${conversationId}/analytics`)
+  }
+
+  async getConversationReports(conversationId: string): Promise<ApiResponse<any[]>> {
+    console.log(`📡 Fetching reports for conversation ${conversationId}`);
+    return this.get(`/api/v1/admin/conversations/${conversationId}/reports`)
+  }
+
+  async deleteConversation(conversationId: string, reason: string, deleteMessages: boolean = false): Promise<ApiResponse<any>> {
+    return this.delete(`/api/v1/admin/conversations/${conversationId}`, { 
+      reason, 
+      delete_messages: deleteMessages 
+    })
+  }
+
+  async bulkConversationAction(data: { 
+    conversation_ids: string[]
+    action: string
+    reason?: string 
+  }): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/conversations/bulk/actions', data)
+  }
+
   // ==================== GROUP MANAGEMENT ====================
   async getGroups(params?: {
     page?: number
@@ -891,7 +1049,8 @@ class FetchApiClient {
       console.log('📡 Sending to API:', apiParams);
       console.log('📡 API URL will be:', `${this.baseURL}/api/v1/admin/groups?${new URLSearchParams(apiParams).toString()}`);
   
-      const response = await this.get<any>('/api/v1/admin/groups', apiParams);
+      // Cast the response to PaginatedResponse since we know the backend returns paginated data
+      const response = await this.get<any>('/api/v1/admin/groups', apiParams) as PaginatedResponse;
       
       console.log('📥 API Response:', {
         success: response.success,
@@ -945,75 +1104,74 @@ class FetchApiClient {
         };
       }
   
-      return response as PaginatedResponse;
+      return response;
     } catch (error) {
       console.error('❌ Get groups error:', error);
       throw error;
     }
   }
 
-async getGroup(id: string): Promise<ApiResponse<any>> {
-  return this.get(`/api/v1/admin/groups/${id}`);
-}
+  async getGroup(id: string): Promise<ApiResponse<any>> {
+    return this.get(`/api/v1/admin/groups/${id}`);
+  }
 
-async getGroupMembers(groupId: string, params?: {
-  page?: number
-  limit?: number
-  role?: string
-  search?: string
-  include_user?: boolean  // Add this property to the type
-}): Promise<PaginatedResponse> {
-  try {
-    const enhancedParams = {
-      ...params,
-      include_user: true,  // Request user data inclusion
-    };
-    
-    const response = await this.get<any>(`/api/v1/admin/groups/${groupId}/members`, enhancedParams);
-    
-    if (Array.isArray(response.data)) {
-      return {
-        success: true,
-        message: 'Group members fetched successfully',
-        data: response.data,
-        pagination: {
-          current_page: 1,
-          per_page: response.data.length,
-          total: response.data.length,
-          total_pages: 1,
-          has_next: false,
-          has_previous: false
+  async getGroupMembers(groupId: string, params?: {
+    page?: number
+    limit?: number
+    role?: string
+    search?: string
+    include_user?: boolean  // Add this property to the type
+  }): Promise<PaginatedResponse> {
+    try {
+      const enhancedParams = {
+        ...params,
+        include_user: true,  // Request user data inclusion
+      };
+      
+      const response = await this.get<any>(`/api/v1/admin/groups/${groupId}/members`, enhancedParams);
+      
+      if (Array.isArray(response.data)) {
+        return {
+          success: true,
+          message: 'Group members fetched successfully',
+          data: response.data,
+          pagination: {
+            current_page: 1,
+            per_page: response.data.length,
+            total: response.data.length,
+            total_pages: 1,
+            has_next: false,
+            has_previous: false
+          }
         }
       }
+      
+      return response as PaginatedResponse;
+    } catch (error) {
+      console.error('❌ Get group members error:', error);
+      throw error;
     }
-    
-    return response as PaginatedResponse;
-  } catch (error) {
-    console.error('❌ Get group members error:', error);
-    throw error;
   }
-}
 
-async updateGroupStatus(id: string, data: {
-  is_active?: boolean
-  status?: string
-  reason?: string
-}): Promise<ApiResponse<any>> {
-  return this.put(`/api/v1/admin/groups/${id}/status`, data);
-}
+  async updateGroupStatus(id: string, data: {
+    is_active?: boolean
+    status?: string
+    reason?: string
+  }): Promise<ApiResponse<any>> {
+    return this.put(`/api/v1/admin/groups/${id}/status`, data);
+  }
 
-async deleteGroup(id: string, reason?: string): Promise<ApiResponse<any>> {
-  return this.delete(`/api/v1/admin/groups/${id}`, { reason });
-}
+  async deleteGroup(id: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.delete(`/api/v1/admin/groups/${id}`, { reason });
+  }
 
-async bulkGroupAction(data: {
-  group_ids: string[]
-  action: string
-  reason?: string
-}): Promise<ApiResponse<any>> {
-  return this.post('/api/v1/admin/groups/bulk/actions', data);
-}
-
+  async bulkGroupAction(data: {
+    group_ids: string[]
+    action: string
+    reason?: string
+  }): Promise<ApiResponse<any>> {
+    return this.post('/api/v1/admin/groups/bulk/actions', data);
+  }
 
   // ==================== EVENT MANAGEMENT ====================
   async getEvents(params?: any): Promise<PaginatedResponse> {
@@ -1139,81 +1297,6 @@ async bulkGroupAction(data: {
     reason?: string 
   }): Promise<ApiResponse<any>> {
     return this.post('/api/v1/admin/stories/bulk/actions', data)
-  }
-
-  // ==================== MESSAGE MANAGEMENT ====================
-  async getMessages(params?: any): Promise<PaginatedResponse> {
-    try {
-      const response = await this.get<any>('/api/v1/admin/messages', params)
-      
-      if (Array.isArray(response.data)) {
-        return {
-          success: true,
-          message: 'Messages fetched successfully',
-          data: response.data,
-          pagination: {
-            current_page: 1,
-            per_page: response.data.length,
-            total: response.data.length,
-            total_pages: 1,
-            has_next: false,
-            has_previous: false
-          }
-        }
-      }
-      
-      return response as PaginatedResponse
-    } catch (error) {
-      console.error('❌ Get messages error:', error)
-      throw error
-    }
-  }
-
-  async getMessage(id: string): Promise<ApiResponse<any>> {
-    return this.get(`/api/v1/admin/messages/${id}`)
-  }
-
-  async getConversations(params?: any): Promise<PaginatedResponse> {
-    try {
-      const response = await this.get<any>('/api/v1/admin/messages/conversations', params)
-      
-      if (Array.isArray(response.data)) {
-        return {
-          success: true,
-          message: 'Conversations fetched successfully',
-          data: response.data,
-          pagination: {
-            current_page: 1,
-            per_page: response.data.length,
-            total: response.data.length,
-            total_pages: 1,
-            has_next: false,
-            has_previous: false
-          }
-        }
-      }
-      
-      return response as PaginatedResponse
-    } catch (error) {
-      console.error('❌ Get conversations error:', error)
-      throw error
-    }
-  }
-
-  async getConversation(id: string): Promise<ApiResponse<any>> {
-    return this.get(`/api/v1/admin/messages/conversations/${id}`)
-  }
-
-  async deleteMessage(id: string, reason?: string): Promise<ApiResponse<any>> {
-    return this.delete(`/api/v1/admin/messages/${id}`, { reason })
-  }
-
-  async bulkMessageAction(data: { 
-    message_ids: string[]
-    action: string
-    reason?: string 
-  }): Promise<ApiResponse<any>> {
-    return this.post('/api/v1/admin/messages/bulk/actions', data)
   }
 
   // ==================== REPORT MANAGEMENT ====================

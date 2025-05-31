@@ -75,6 +75,7 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, a
 		users.GET("", adminHandler.GetAllUsers)
 		users.GET("/search", adminHandler.SearchUsers)
 		users.GET("/:id", middleware.ValidateObjectID("id"), adminHandler.GetUser)
+		users.PUT("/:id", middleware.ValidateObjectID("id"), adminHandler.UpdateUser)
 		users.GET("/:id/stats", middleware.ValidateObjectID("id"), adminHandler.GetUserStats)
 		users.PUT("/:id/status", middleware.ValidateObjectID("id"), adminHandler.UpdateUserStatus)
 		users.PUT("/:id/verify", middleware.ValidateObjectID("id"), adminHandler.VerifyUser)
@@ -111,7 +112,7 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, a
 		comments.PUT("/:id/hide", middleware.ValidateObjectID("id"), adminHandler.HideComment)
 		comments.DELETE("/:id", middleware.ValidateObjectID("id"), adminHandler.DeleteComment)
 		comments.POST("/bulk/actions", adminHandler.BulkCommentAction)
-		
+
 		comments.PUT("/:id", middleware.ValidateObjectID("id"), adminHandler.UpdateComment)
 		comments.PUT("/:id/show", middleware.ValidateObjectID("id"), adminHandler.ShowComment)
 	}
@@ -153,10 +154,22 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, a
 	{
 		messages.GET("", adminHandler.GetAllMessages)
 		messages.GET("/:id", middleware.ValidateObjectID("id"), adminHandler.GetMessage)
-		messages.GET("/conversations", adminHandler.GetAllConversations)
-		messages.GET("/conversations/:id", middleware.ValidateObjectID("id"), adminHandler.GetConversation)
 		messages.DELETE("/:id", middleware.ValidateObjectID("id"), adminHandler.DeleteMessage)
 		messages.POST("/bulk/actions", adminHandler.BulkMessageAction)
+	}
+
+	// Conversation Management (New Section - Add after Message Management)
+	conversations := admin.Group("/conversations")
+	{
+		conversations.GET("", adminHandler.GetAllConversations)
+		conversations.GET("/:id", middleware.ValidateObjectID("id"), adminHandler.GetConversation)
+		conversations.GET("/:id/messages", middleware.ValidateObjectID("id"), adminHandler.GetConversationMessages)
+		conversations.GET("/:id/analytics", middleware.ValidateObjectID("id"), adminHandler.GetConversationAnalytics)
+		conversations.GET("/:id/reports", middleware.ValidateObjectID("id"), adminHandler.GetConversationReports)
+		conversations.DELETE("/:id", middleware.ValidateObjectID("id"), adminHandler.DeleteConversation)
+
+		// Bulk operations
+		conversations.POST("/bulk/actions", adminHandler.BulkConversationAction)
 	}
 
 	// Report Management

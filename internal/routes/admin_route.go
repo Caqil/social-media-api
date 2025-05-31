@@ -1,4 +1,4 @@
-// internal/routes/admin_routes.go
+// internal/routes/admin_routes.go - Fixed Routes Configuration
 package routes
 
 import (
@@ -15,10 +15,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// Simple admin middleware - just check if user has admin role
+// Simplified admin middleware with better error handling
 func requireAdminRole() gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
-		// Get user role from context (set by regular auth middleware)
 		userRole, exists := c.Get("user_role")
 		if !exists {
 			utils.ErrorResponse(c, http.StatusUnauthorized, "Authentication required", nil)
@@ -26,7 +25,13 @@ func requireAdminRole() gin.HandlerFunc {
 			return
 		}
 
-		role := userRole.(models.UserRole)
+		role, ok := userRole.(models.UserRole)
+		if !ok {
+			utils.ErrorResponse(c, http.StatusUnauthorized, "Invalid user role", nil)
+			c.Abort()
+			return
+		}
+
 		if role != models.RoleAdmin && role != models.RoleSuperAdmin {
 			utils.ErrorResponse(c, http.StatusForbidden, "Admin access required", nil)
 			c.Abort()
@@ -37,7 +42,6 @@ func requireAdminRole() gin.HandlerFunc {
 	})
 }
 
-// Simple super admin middleware
 func requireSuperAdminRole() gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
 		userRole, exists := c.Get("user_role")
@@ -47,7 +51,13 @@ func requireSuperAdminRole() gin.HandlerFunc {
 			return
 		}
 
-		role := userRole.(models.UserRole)
+		role, ok := userRole.(models.UserRole)
+		if !ok {
+			utils.ErrorResponse(c, http.StatusUnauthorized, "Invalid user role", nil)
+			c.Abort()
+			return
+		}
+
 		if role != models.RoleSuperAdmin {
 			utils.ErrorResponse(c, http.StatusForbidden, "Super admin access required", nil)
 			c.Abort()
@@ -60,14 +70,15 @@ func requireSuperAdminRole() gin.HandlerFunc {
 
 func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, authMiddleware *middleware.AuthMiddleware) {
 	admin := router.Group("/api/v1/admin")
-	admin.Use(authMiddleware.RequireAuth())
-	admin.Use(middleware.RequireAdmin()) // Same auth that works for users
-	admin.Use(requireAdminRole())        // Simple role check
-	admin.Use(middleware.Logger())       // Request logging
 
-	// Dashboard
+	// Apply middlewares in correct order
+	admin.Use(authMiddleware.RequireAuth())
+	admin.Use(requireAdminRole())
+	admin.Use(middleware.Logger())
+
+	// Dashboard routes
 	admin.GET("/dashboard", adminHandler.GetDashboard)
-	admin.GET("/dashboard/stats", adminHandler.GetDashboard)
+	admin.GET("/dashboard/stats", adminHandler.GetDashboardStats)
 
 	// User Management
 	users := admin.Group("/users")
@@ -75,16 +86,13 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, a
 		users.GET("", adminHandler.GetAllUsers)
 		users.GET("/search", adminHandler.SearchUsers)
 		users.GET("/:id", middleware.ValidateObjectID("id"), adminHandler.GetUser)
+		users.POST("", adminHandler.CreateUser) // Add create user route
 		users.PUT("/:id", middleware.ValidateObjectID("id"), adminHandler.UpdateUser)
 		users.GET("/:id/stats", middleware.ValidateObjectID("id"), adminHandler.GetUserStats)
 		users.PUT("/:id/status", middleware.ValidateObjectID("id"), adminHandler.UpdateUserStatus)
 		users.PUT("/:id/verify", middleware.ValidateObjectID("id"), adminHandler.VerifyUser)
 		users.DELETE("/:id", middleware.ValidateObjectID("id"), adminHandler.DeleteUser)
-
-		// Bulk operations
 		users.POST("/bulk/actions", adminHandler.BulkUserAction)
-
-		// Export
 		users.GET("/export", adminHandler.ExportUsers)
 	}
 
@@ -93,14 +101,11 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, a
 	{
 		posts.GET("", adminHandler.GetAllPosts)
 		posts.GET("/search", adminHandler.SearchPosts)
+		posts.GET("/:id", middleware.ValidateObjectID("id"), adminHandler.GetPost)
 		posts.GET("/:id/stats", middleware.ValidateObjectID("id"), adminHandler.GetPostStats)
 		posts.PUT("/:id/hide", middleware.ValidateObjectID("id"), adminHandler.HidePost)
 		posts.DELETE("/:id", middleware.ValidateObjectID("id"), adminHandler.DeletePost)
-
-		// Bulk operations
 		posts.POST("/bulk/actions", adminHandler.BulkPostAction)
-
-		// Export
 		posts.GET("/export", adminHandler.ExportPosts)
 	}
 
@@ -109,12 +114,32 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, a
 	{
 		comments.GET("", adminHandler.GetAllComments)
 		comments.GET("/:id", middleware.ValidateObjectID("id"), adminHandler.GetComment)
+		comments.PUT("/:id", middleware.ValidateObjectID("id"), adminHandler.UpdateComment)
 		comments.PUT("/:id/hide", middleware.ValidateObjectID("id"), adminHandler.HideComment)
+		comments.PUT("/:id/show", middleware.ValidateObjectID("id"), adminHandler.ShowComment)
 		comments.DELETE("/:id", middleware.ValidateObjectID("id"), adminHandler.DeleteComment)
 		comments.POST("/bulk/actions", adminHandler.BulkCommentAction)
+	}
 
-		comments.PUT("/:id", middleware.ValidateObjectID("id"), adminHandler.UpdateComment)
-		comments.PUT("/:id/show", middleware.ValidateObjectID("id"), adminHandler.ShowComment)
+	// Message Management (Fixed)
+	messages := admin.Group("/messages")
+	{
+		messages.GET("", adminHandler.GetAllMessages)
+		messages.GET("/:id", middleware.ValidateObjectID("id"), adminHandler.GetMessage)
+		messages.DELETE("/:id", middleware.ValidateObjectID("id"), adminHandler.DeleteMessage)
+		messages.POST("/bulk/actions", adminHandler.BulkMessageAction)
+	}
+
+	// Conversation Management (Fixed)
+	conversations := admin.Group("/conversations")
+	{
+		conversations.GET("", adminHandler.GetAllConversations)
+		conversations.GET("/:id", middleware.ValidateObjectID("id"), adminHandler.GetConversation)
+		conversations.GET("/:id/messages", middleware.ValidateObjectID("id"), adminHandler.GetConversationMessages)
+		conversations.GET("/:id/analytics", middleware.ValidateObjectID("id"), adminHandler.GetConversationAnalytics)
+		conversations.GET("/:id/reports", middleware.ValidateObjectID("id"), adminHandler.GetConversationReports)
+		conversations.DELETE("/:id", middleware.ValidateObjectID("id"), adminHandler.DeleteConversation)
+		conversations.POST("/bulk/actions", adminHandler.BulkConversationAction)
 	}
 
 	// Group Management
@@ -149,29 +174,6 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, a
 		stories.POST("/bulk/actions", adminHandler.BulkStoryAction)
 	}
 
-	// Message Management
-	messages := admin.Group("/messages")
-	{
-		messages.GET("", adminHandler.GetAllMessages)
-		messages.GET("/:id", middleware.ValidateObjectID("id"), adminHandler.GetMessage)
-		messages.DELETE("/:id", middleware.ValidateObjectID("id"), adminHandler.DeleteMessage)
-		messages.POST("/bulk/actions", adminHandler.BulkMessageAction)
-	}
-
-	// Conversation Management (New Section - Add after Message Management)
-	conversations := admin.Group("/conversations")
-	{
-		conversations.GET("", adminHandler.GetAllConversations)
-		conversations.GET("/:id", middleware.ValidateObjectID("id"), adminHandler.GetConversation)
-		conversations.GET("/:id/messages", middleware.ValidateObjectID("id"), adminHandler.GetConversationMessages)
-		conversations.GET("/:id/analytics", middleware.ValidateObjectID("id"), adminHandler.GetConversationAnalytics)
-		conversations.GET("/:id/reports", middleware.ValidateObjectID("id"), adminHandler.GetConversationReports)
-		conversations.DELETE("/:id", middleware.ValidateObjectID("id"), adminHandler.DeleteConversation)
-
-		// Bulk operations
-		conversations.POST("/bulk/actions", adminHandler.BulkConversationAction)
-	}
-
 	// Report Management
 	reports := admin.Group("/reports")
 	{
@@ -182,13 +184,11 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, a
 		reports.POST("/:id/resolve", middleware.ValidateObjectID("id"), adminHandler.ResolveReport)
 		reports.POST("/:id/reject", middleware.ValidateObjectID("id"), adminHandler.RejectReport)
 		reports.POST("/bulk/actions", adminHandler.BulkReportAction)
-
-		// Report statistics
 		reports.GET("/stats", adminHandler.GetReportStats)
 		reports.GET("/stats/summary", adminHandler.GetReportSummary)
 	}
 
-	// Follow/Relationship Management
+	// Follow Management
 	follows := admin.Group("/follows")
 	{
 		follows.GET("", adminHandler.GetAllFollows)
@@ -198,7 +198,7 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, a
 		follows.POST("/bulk/actions", adminHandler.BulkFollowAction)
 	}
 
-	// Like/Reaction Management
+	// Like Management
 	likes := admin.Group("/likes")
 	{
 		likes.GET("", adminHandler.GetAllLikes)
@@ -237,8 +237,6 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, a
 		media.PUT("/:id/moderate", middleware.ValidateObjectID("id"), adminHandler.ModerateMedia)
 		media.DELETE("/:id", middleware.ValidateObjectID("id"), adminHandler.DeleteMedia)
 		media.POST("/bulk/actions", adminHandler.BulkMediaAction)
-
-		// Storage management
 		media.GET("/storage/stats", adminHandler.GetStorageStats)
 		media.POST("/storage/cleanup", adminHandler.CleanupStorage)
 	}
@@ -265,15 +263,13 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, a
 		analytics.GET("/demographics", adminHandler.GetDemographicAnalytics)
 		analytics.GET("/revenue", adminHandler.GetRevenueAnalytics)
 		analytics.GET("/reports/custom", adminHandler.GetCustomReport)
-
-		// Real-time analytics
 		analytics.GET("/realtime", adminHandler.GetRealtimeAnalytics)
 		analytics.GET("/live-stats", adminHandler.GetLiveStats)
 	}
 
 	// System Management (Super Admin only)
 	system := admin.Group("/system")
-	system.Use(requireSuperAdminRole()) // Additional check for super admin
+	system.Use(requireSuperAdminRole())
 	{
 		system.GET("/health", adminHandler.GetSystemHealth)
 		system.GET("/info", adminHandler.GetSystemInfo)
@@ -281,14 +277,10 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, a
 		system.GET("/performance", adminHandler.GetPerformanceMetrics)
 		system.GET("/database/stats", adminHandler.GetDatabaseStats)
 		system.GET("/cache/stats", adminHandler.GetCacheStats)
-
-		// System operations
 		system.POST("/cache/clear", adminHandler.ClearCache)
 		system.POST("/cache/warm", adminHandler.WarmCache)
 		system.POST("/maintenance/enable", adminHandler.EnableMaintenanceMode)
 		system.POST("/maintenance/disable", adminHandler.DisableMaintenanceMode)
-
-		// Database operations
 		system.POST("/database/backup", adminHandler.BackupDatabase)
 		system.GET("/database/backups", adminHandler.GetDatabaseBackups)
 		system.POST("/database/restore", adminHandler.RestoreDatabase)
@@ -304,13 +296,9 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, a
 		config.GET("/history", adminHandler.GetConfigurationHistory)
 		config.POST("/rollback", adminHandler.RollbackConfiguration)
 		config.GET("/validate", adminHandler.ValidateConfiguration)
-
-		// Feature flags
 		config.GET("/features", adminHandler.GetFeatureFlags)
 		config.PUT("/features", adminHandler.UpdateFeatureFlags)
 		config.PUT("/features/:feature/toggle", adminHandler.ToggleFeature)
-
-		// Rate limits
 		config.GET("/rate-limits", adminHandler.GetRateLimits)
 		config.PUT("/rate-limits", adminHandler.UpdateRateLimits)
 	}
@@ -320,24 +308,23 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, a
 func SetupPublicAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler) {
 	public := router.Group("/api/v1/admin/public")
 	public.Use(middleware.CORS())
+
+	// Health check routes
 	public.GET("/status", adminHandler.GetPublicSystemStatus)
 	public.GET("/health", adminHandler.GetPublicHealthCheck)
 
 	// Authentication routes
 	auth := public.Group("/auth")
-
-	cfg := config.GetConfig()
-	if cfg.IsDevelopment() {
-		log.Println("⚠️  ALL RATE LIMITING DISABLED FOR DEVELOPMENT")
-		log.Println("🔑 Login endpoint: POST /api/v1/admin/public/auth/login")
-		log.Println("🔄 Refresh endpoint: POST /api/v1/admin/public/auth/refresh")
-		// NO MIDDLEWARE APPLIED IN DEVELOPMENT
-	} else {
-		// Only apply rate limiting in production
-		//auth.Use(middleware.LoginRateLimit())
-		log.Println("🛡️  Rate limiting ENABLED for production")
-	}
 	{
+		cfg := config.GetConfig()
+		if cfg.IsDevelopment() {
+			log.Println("⚠️  ALL RATE LIMITING DISABLED FOR DEVELOPMENT")
+			log.Println("🔑 Login endpoint: POST /api/v1/admin/public/auth/login")
+			log.Println("🔄 Refresh endpoint: POST /api/v1/admin/public/auth/refresh")
+		} else {
+			log.Println("🛡️  Rate limiting ENABLED for production")
+		}
+
 		auth.POST("/login", adminHandler.AdminLogin)
 		auth.POST("/logout", adminHandler.AdminLogout)
 		auth.POST("/refresh", adminHandler.RefreshAdminToken)
@@ -354,27 +341,8 @@ func SetupAdminWebSocketRoutes(router *gin.Engine, adminHandler *handlers.AdminH
 	ws.Use(authMiddleware.RequireAuth())
 	ws.Use(requireAdminRole())
 
-	// Real-time dashboard updates
 	ws.GET("/dashboard", adminHandler.DashboardWebSocket)
-
-	// Real-time system monitoring
 	ws.GET("/monitoring", adminHandler.MonitoringWebSocket)
-
-	// Real-time moderation queue
 	ws.GET("/moderation", adminHandler.ModerationWebSocket)
-
-	// Real-time user activities
 	ws.GET("/activities", adminHandler.ActivitiesWebSocket)
-}
-
-// SetupSuperAdminRoutes sets up routes that require super admin access
-func SetupSuperAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, db *mongo.Database, jwtSecret, refreshSecret string) {
-	authMiddleware := middleware.NewAuthMiddleware(db, jwtSecret, refreshSecret)
-
-	superAdmin := router.Group("/api/v1/super-admin")
-	superAdmin.Use(authMiddleware.RequireAuth())
-	superAdmin.Use(requireSuperAdminRole())
-
-	// Additional super admin only routes can be added here
-	// These would be for extremely sensitive operations
 }

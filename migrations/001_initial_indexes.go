@@ -73,10 +73,10 @@ func createInitialIndexes(ctx context.Context, db *mongo.Database) error {
 		return err
 	}
 
-	// Events collection indexes
-	if err := createEventsIndexes(ctx, db); err != nil {
-		return err
-	}
+	// // Events collection indexes
+	// if err := createEventsIndexes(ctx, db); err != nil {
+	// 	return err
+	// }
 
 	// Reports collection indexes
 	if err := createReportsIndexes(ctx, db); err != nil {
@@ -159,7 +159,7 @@ func createPostsIndexes(ctx context.Context, db *mongo.Database) error {
 		{Keys: bson.D{{"hashtags", 1}}},
 		{Keys: bson.D{{"mentions", 1}}},
 		{Keys: bson.D{{"group_id", 1}}, Options: options.Index().SetSparse(true)},
-		{Keys: bson.D{{"event_id", 1}}, Options: options.Index().SetSparse(true)},
+		//{Keys: bson.D{{"event_id", 1}}, Options: options.Index().SetSparse(true)},
 		{Keys: bson.D{{"original_post_id", 1}}, Options: options.Index().SetSparse(true)},
 		{Keys: bson.D{{"scheduled_for", 1}}, Options: options.Index().SetSparse(true)},
 		{Keys: bson.D{{"likes_count", -1}}},
@@ -443,47 +443,47 @@ func createGroupsIndexes(ctx context.Context, db *mongo.Database) error {
 	return nil
 }
 
-func createEventsIndexes(ctx context.Context, db *mongo.Database) error {
-	collection := db.Collection("events")
+// func createEventsIndexes(ctx context.Context, db *mongo.Database) error {
+// 	collection := db.Collection("events")
 
-	// Create unique index for slug
-	if err := EnsureUniqueIndex(ctx, collection, bson.D{{"slug", 1}}); err != nil {
-		return err
-	}
+// 	// Create unique index for slug
+// 	if err := EnsureUniqueIndex(ctx, collection, bson.D{{"slug", 1}}); err != nil {
+// 		return err
+// 	}
 
-	indexes := []mongo.IndexModel{
-		{Keys: bson.D{{"created_by", 1}}},
-		{Keys: bson.D{{"group_id", 1}}, Options: options.Index().SetSparse(true)},
-		{Keys: bson.D{{"status", 1}}},
-		{Keys: bson.D{{"privacy", 1}}},
-		{Keys: bson.D{{"category", 1}}},
-		{Keys: bson.D{{"type", 1}}},
-		{Keys: bson.D{{"start_time", 1}}},
-		{Keys: bson.D{{"end_time", 1}}},
-		{Keys: bson.D{{"created_at", -1}}},
-		{Keys: bson.D{{"attendees_count", -1}}},
-		{Keys: bson.D{{"is_recurring", 1}}},
-		{Keys: bson.D{{"is_hidden", 1}}},
-		{Keys: bson.D{{"tags", 1}}},
-		{Keys: bson.D{{"deleted_at", 1}}, Options: options.Index().SetSparse(true)},
-		// Compound indexes
-		{Keys: bson.D{{"privacy", 1}, {"status", 1}, {"start_time", 1}}},
-		{Keys: bson.D{{"group_id", 1}, {"start_time", 1}}},
-		{Keys: bson.D{{"category", 1}, {"start_time", 1}}},
-		{Keys: bson.D{{"start_time", 1}, {"end_time", 1}}},
-		// Text search index
-		{Keys: bson.D{{"title", "text"}, {"description", "text"}, {"tags", "text"}}},
-		// Geospatial index for location
-		{Keys: bson.D{{"location", "2dsphere"}}, Options: options.Index().SetSparse(true)},
-	}
+// 	indexes := []mongo.IndexModel{
+// 		{Keys: bson.D{{"created_by", 1}}},
+// 		{Keys: bson.D{{"group_id", 1}}, Options: options.Index().SetSparse(true)},
+// 		{Keys: bson.D{{"status", 1}}},
+// 		{Keys: bson.D{{"privacy", 1}}},
+// 		{Keys: bson.D{{"category", 1}}},
+// 		{Keys: bson.D{{"type", 1}}},
+// 		{Keys: bson.D{{"start_time", 1}}},
+// 		{Keys: bson.D{{"end_time", 1}}},
+// 		{Keys: bson.D{{"created_at", -1}}},
+// 		{Keys: bson.D{{"attendees_count", -1}}},
+// 		{Keys: bson.D{{"is_recurring", 1}}},
+// 		{Keys: bson.D{{"is_hidden", 1}}},
+// 		{Keys: bson.D{{"tags", 1}}},
+// 		{Keys: bson.D{{"deleted_at", 1}}, Options: options.Index().SetSparse(true)},
+// 		// Compound indexes
+// 		{Keys: bson.D{{"privacy", 1}, {"status", 1}, {"start_time", 1}}},
+// 		{Keys: bson.D{{"group_id", 1}, {"start_time", 1}}},
+// 		{Keys: bson.D{{"category", 1}, {"start_time", 1}}},
+// 		{Keys: bson.D{{"start_time", 1}, {"end_time", 1}}},
+// 		// Text search index
+// 		{Keys: bson.D{{"title", "text"}, {"description", "text"}, {"tags", "text"}}},
+// 		// Geospatial index for location
+// 		{Keys: bson.D{{"location", "2dsphere"}}, Options: options.Index().SetSparse(true)},
+// 	}
 
-	if err := CreateIndexesSafely(ctx, collection, indexes); err != nil {
-		return err
-	}
+// 	if err := CreateIndexesSafely(ctx, collection, indexes); err != nil {
+// 		return err
+// 	}
 
-	log.Println("Events indexes created")
-	return nil
-}
+// 	log.Println("Events indexes created")
+// 	return nil
+// }
 
 func createReportsIndexes(ctx context.Context, db *mongo.Database) error {
 	collection := db.Collection("reports")
@@ -571,7 +571,7 @@ func createMentionsIndexes(ctx context.Context, db *mongo.Database) error {
 		{Keys: bson.D{{"is_active", 1}}},
 		{Keys: bson.D{{"is_visible", 1}}},
 		{Keys: bson.D{{"group_id", 1}}, Options: options.Index().SetSparse(true)},
-		{Keys: bson.D{{"event_id", 1}}, Options: options.Index().SetSparse(true)},
+		//{Keys: bson.D{{"event_id", 1}}, Options: options.Index().SetSparse(true)},
 		{Keys: bson.D{{"deleted_at", 1}}, Options: options.Index().SetSparse(true)},
 		// Compound indexes
 		{Keys: bson.D{{"mentioned_id", 1}, {"is_read", 1}, {"created_at", -1}}},
@@ -636,7 +636,8 @@ func dropInitialIndexes(ctx context.Context, db *mongo.Database) error {
 
 	collections := []string{
 		"users", "posts", "comments", "stories", "messages", "conversations",
-		"follows", "likes", "notifications", "groups", "events", "reports",
+		"follows", "likes", "notifications", "groups", //"events",
+		"reports",
 		"hashtags", "mentions", "media",
 	}
 

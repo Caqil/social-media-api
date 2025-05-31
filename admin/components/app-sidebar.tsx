@@ -114,8 +114,26 @@ const data = {
     },
     {
       title: "Messages",
-      icon: IconMail,
       url: "/admin/messages",
+      icon: IconMessages,
+      items: [
+        {
+          title: "All Messages",
+          url: "/admin/messages",
+        },
+        {
+          title: "Conversations",
+          url: "/admin/conversations",
+        },
+        {
+          title: "Message Reports",
+          url: "/admin/messages/reports",
+        },
+        {
+          title: "Message Analytics",
+          url: "/admin/messages/analytics",
+        },
+      ],
     },
   ],
 

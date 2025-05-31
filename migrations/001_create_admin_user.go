@@ -33,7 +33,7 @@ func CreateAdminUser001() Migration {
 			}
 
 			// Hash the default password
-			hashedPassword, err := utils.HashPassword("admin123!@#")
+			hashedPassword, err := utils.HashPassword("admin123")
 			if err != nil {
 				return err
 			}
@@ -49,11 +49,13 @@ func CreateAdminUser001() Migration {
 				// Don't set Role here, set it after BeforeCreate()
 			}
 
+			adminUser.BeforeCreate()
+
 			// Set admin-specific values AFTER BeforeCreate()
 			adminUser.Role = models.RoleSuperAdmin
 			adminUser.IsVerified = true    // Override default
 			adminUser.EmailVerified = true // Override default
-			adminUser.BeforeCreate()
+
 			_, err = collection.InsertOne(ctx, adminUser)
 			if err != nil {
 				return err

@@ -29,24 +29,24 @@ type DataGenerator struct {
 	stories       []models.Story
 	groups        []models.Group
 	conversations []models.Conversation
-	events        []models.Event
-	hashtags      []models.Hashtag
-	media         []models.Media
+	//events        []models.Event
+	hashtags []models.Hashtag
+	media    []models.Media
 }
 
 type GenerationConfig struct {
-	UserCount           int
-	PostsPerUser        int
-	MaxFollowsPerUser   int
-	MaxLikesPerPost     int
-	MaxCommentsPerPost  int
-	CommentsPercentage  float64
-	LikesPercentage     float64
-	FollowsPercentage   float64
-	CleanExisting       bool
-	CreateStories       bool
-	CreateGroups        bool
-	CreateEvents        bool
+	UserCount          int
+	PostsPerUser       int
+	MaxFollowsPerUser  int
+	MaxLikesPerPost    int
+	MaxCommentsPerPost int
+	CommentsPercentage float64
+	LikesPercentage    float64
+	FollowsPercentage  float64
+	CleanExisting      bool
+	CreateStories      bool
+	CreateGroups       bool
+	//CreateEvents        bool
 	CreateConversations bool
 	CreateNotifications bool
 	CreateMentions      bool
@@ -79,9 +79,9 @@ func main() {
 		stories:       make([]models.Story, 0),
 		groups:        make([]models.Group, 0),
 		conversations: make([]models.Conversation, 0),
-		events:        make([]models.Event, 0),
-		hashtags:      make([]models.Hashtag, 0),
-		media:         make([]models.Media, 0),
+		//events:        make([]models.Event, 0),
+		hashtags: make([]models.Hashtag, 0),
+		media:    make([]models.Media, 0),
 	}
 
 	// Initialize faker with seed for consistent data
@@ -130,18 +130,18 @@ func main() {
 
 func parseArgs() GenerationConfig {
 	genConfig := GenerationConfig{
-		UserCount:           100,
-		PostsPerUser:        8,
-		MaxFollowsPerUser:   25,
-		MaxLikesPerPost:     40,
-		MaxCommentsPerPost:  12,
-		CommentsPercentage:  0.75,
-		LikesPercentage:     0.85,
-		FollowsPercentage:   0.7,
-		CleanExisting:       false,
-		CreateStories:       true,
-		CreateGroups:        true,
-		CreateEvents:        true,
+		UserCount:          100,
+		PostsPerUser:       8,
+		MaxFollowsPerUser:  25,
+		MaxLikesPerPost:    40,
+		MaxCommentsPerPost: 12,
+		CommentsPercentage: 0.75,
+		LikesPercentage:    0.85,
+		FollowsPercentage:  0.7,
+		CleanExisting:      false,
+		CreateStories:      true,
+		CreateGroups:       true,
+		//CreateEvents:        true,
 		CreateConversations: true,
 		CreateNotifications: true,
 		CreateMentions:      true,
@@ -171,7 +171,7 @@ func parseArgs() GenerationConfig {
 			genConfig.CleanExisting = true
 		case "--minimal":
 			genConfig.CreateStories = false
-			genConfig.CreateEvents = false
+			//genConfig.CreateEvents = false
 			genConfig.CreateMentions = false
 			genConfig.CreateReports = false
 		case "--verbose", "-v":
@@ -291,13 +291,13 @@ func (g *DataGenerator) generateCoreData(ctx context.Context, genConfig Generati
 		log.Printf("✅ Generated %d groups", len(g.groups))
 	}
 
-	if genConfig.CreateEvents {
-		log.Println("📅 Generating events...")
-		if err := g.generateEvents(ctx, genConfig); err != nil {
-			return err
-		}
-		log.Printf("✅ Generated %d events", len(g.events))
-	}
+	// if genConfig.CreateEvents {
+	// 	log.Println("📅 Generating events...")
+	// 	if err := g.generateEvents(ctx, genConfig); err != nil {
+	// 		return err
+	// 	}
+	// 	log.Printf("✅ Generated %d events", len(g.events))
+	// }
 
 	if genConfig.CreateStories {
 		log.Println("📱 Generating stories...")
@@ -355,12 +355,12 @@ func (g *DataGenerator) generateRelationshipsAndInteractions(ctx context.Context
 		}
 	}
 
-	if genConfig.CreateEvents {
-		log.Println("🎫 Generating event RSVPs...")
-		if err := g.generateEventRSVPs(ctx, genConfig); err != nil {
-			return err
-		}
-	}
+	// if genConfig.CreateEvents {
+	// 	log.Println("🎫 Generating event RSVPs...")
+	// 	if err := g.generateEventRSVPs(ctx, genConfig); err != nil {
+	// 		return err
+	// 	}
+	// }
 
 	return nil
 }
@@ -422,7 +422,7 @@ func (g *DataGenerator) finalizeGeneration(ctx context.Context) error {
 func (g *DataGenerator) cleanExistingData(ctx context.Context) error {
 	collections := []string{
 		"users", "posts", "comments", "likes", "follows", "stories", "story_views", "story_highlights",
-		"groups", "group_members", "group_invites", "conversations", "messages", "events", "event_rsvps",
+		"groups", "group_members", "group_invites", "conversations", "messages", //"events", "event_rsvps",
 		"notifications", "reports", "media", "hashtags", "mentions", "blocks",
 	}
 
@@ -791,91 +791,91 @@ func (g *DataGenerator) generateGroups(ctx context.Context, genConfig Generation
 	return nil
 }
 
-func (g *DataGenerator) generateEvents(ctx context.Context, genConfig GenerationConfig) error {
-	collection := g.db.Collection("events")
-	events := make([]interface{}, 0)
+// func (g *DataGenerator) generateEvents(ctx context.Context, genConfig GenerationConfig) error {
+// 	collection := g.db.Collection("events")
+// 	events := make([]interface{}, 0)
 
-	eventCount := genConfig.UserCount / 10 // One event per 10 users
-	if eventCount < 3 {
-		eventCount = 3
-	}
+// 	eventCount := genConfig.UserCount / 10 // One event per 10 users
+// 	if eventCount < 3 {
+// 		eventCount = 3
+// 	}
 
-	categories := []string{
-		"business", "technology", "education", "entertainment", "sports",
-		"music", "food", "networking", "workshop", "conference",
-		"meetup", "party", "festival", "charity", "health",
-	}
+// 	categories := []string{
+// 		"business", "technology", "education", "entertainment", "sports",
+// 		"music", "food", "networking", "workshop", "conference",
+// 		"meetup", "party", "festival", "charity", "health",
+// 	}
 
-	for i := 0; i < eventCount; i++ {
-		creator := g.users[rand.Intn(len(g.users))]
-		startTime := gofakeit.DateRange(time.Now(), time.Now().AddDate(0, 6, 0))
-		endTime := startTime.Add(time.Hour * time.Duration(rand.Intn(8)+1))
+// 	for i := 0; i < eventCount; i++ {
+// 		creator := g.users[rand.Intn(len(g.users))]
+// 		startTime := gofakeit.DateRange(time.Now(), time.Now().AddDate(0, 6, 0))
+// 		endTime := startTime.Add(time.Hour * time.Duration(rand.Intn(8)+1))
 
-		event := models.Event{
-			BaseModel: models.BaseModel{
-				ID:        primitive.NewObjectID(),
-				CreatedAt: gofakeit.DateRange(creator.CreatedAt, startTime),
-			},
-			Title:       generateEventTitle(),
-			Description: gofakeit.Paragraph(3, 5, 12, " "),
-			Slug:        strings.ToLower(strings.ReplaceAll(gofakeit.BuzzWord(), " ", "-")),
-			Category:    categories[rand.Intn(len(categories))],
-			Type:        randomEventType(),
-			StartTime:   startTime,
-			EndTime:     endTime,
-			Timezone:    "UTC",
-			CreatedBy:   creator.ID,
-			Status:      models.EventPublished,
-			Privacy:     randomVisibility(),
-			CoverImage:  gofakeit.ImageURL(1200, 600),
-		}
+// 		event := models.Event{
+// 			BaseModel: models.BaseModel{
+// 				ID:        primitive.NewObjectID(),
+// 				CreatedAt: gofakeit.DateRange(creator.CreatedAt, startTime),
+// 			},
+// 			Title:       generateEventTitle(),
+// 			Description: gofakeit.Paragraph(3, 5, 12, " "),
+// 			Slug:        strings.ToLower(strings.ReplaceAll(gofakeit.BuzzWord(), " ", "-")),
+// 			Category:    categories[rand.Intn(len(categories))],
+// 			Type:        randomEventType(),
+// 			StartTime:   startTime,
+// 			EndTime:     endTime,
+// 			Timezone:    "UTC",
+// 			CreatedBy:   creator.ID,
+// 			Status:      models.EventPublished,
+// 			Privacy:     randomVisibility(),
+// 			CoverImage:  gofakeit.ImageURL(1200, 600),
+// 		}
 
-		// Add location for offline/hybrid events
-		if event.Type != "online" {
-			event.Location = &models.Location{
-				Name:      gofakeit.Company() + " " + gofakeit.BuzzWord(),
-				Address:   gofakeit.Address().Address,
-				Latitude:  gofakeit.Latitude(),
-				Longitude: gofakeit.Longitude(),
-			}
-		}
+// 		// Add location for offline/hybrid events
+// 		if event.Type != "online" {
+// 			event.Location = &models.Location{
+// 				Name:      gofakeit.Company() + " " + gofakeit.BuzzWord(),
+// 				Address:   gofakeit.Address().Address,
+// 				Latitude:  gofakeit.Latitude(),
+// 				Longitude: gofakeit.Longitude(),
+// 			}
+// 		}
 
-		// Add online URL for online/hybrid events
-		if event.Type != "offline" {
-			event.OnlineEventURL = "https://meet.example.com/" + gofakeit.UUID()
-		}
+// 		// Add online URL for online/hybrid events
+// 		if event.Type != "offline" {
+// 			event.OnlineEventURL = "https://meet.example.com/" + gofakeit.UUID()
+// 		}
 
-		// Add pricing info
-		if rand.Float64() < 0.3 {
-			event.Price = &models.EventPrice{
-				IsFree:      false,
-				Currency:    "USD",
-				Amount:      float64(rand.Intn(100) + 10),
-				Description: "Early bird pricing",
-			}
-		} else {
-			event.Price = &models.EventPrice{
-				IsFree: true,
-			}
-		}
+// 		// Add pricing info
+// 		if rand.Float64() < 0.3 {
+// 			event.Price = &models.EventPrice{
+// 				IsFree:      false,
+// 				Currency:    "USD",
+// 				Amount:      float64(rand.Intn(100) + 10),
+// 				Description: "Early bird pricing",
+// 			}
+// 		} else {
+// 			event.Price = &models.EventPrice{
+// 				IsFree: true,
+// 			}
+// 		}
 
-		// Assign to group occasionally
-		if len(g.groups) > 0 && rand.Float64() < 0.4 {
-			group := g.groups[rand.Intn(len(g.groups))]
-			event.GroupID = &group.ID
-		}
+// 		// Assign to group occasionally
+// 		if len(g.groups) > 0 && rand.Float64() < 0.4 {
+// 			group := g.groups[rand.Intn(len(g.groups))]
+// 			event.GroupID = &group.ID
+// 		}
 
-		event.BeforeCreate()
-		events = append(events, event)
-		g.events = append(g.events, event)
-	}
+// 		event.BeforeCreate()
+// 		events = append(events, event)
+// 		g.events = append(g.events, event)
+// 	}
 
-	if _, err := collection.InsertMany(ctx, events); err != nil {
-		return fmt.Errorf("failed to insert events: %w", err)
-	}
+// 	if _, err := collection.InsertMany(ctx, events); err != nil {
+// 		return fmt.Errorf("failed to insert events: %w", err)
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 func (g *DataGenerator) generateStories(ctx context.Context, genConfig GenerationConfig) error {
 	collection := g.db.Collection("stories")
@@ -1482,62 +1482,62 @@ func (g *DataGenerator) generateMessages(ctx context.Context, genConfig Generati
 	return nil
 }
 
-func (g *DataGenerator) generateEventRSVPs(ctx context.Context, genConfig GenerationConfig) error {
-	collection := g.db.Collection("event_rsvps")
-	rsvps := make([]interface{}, 0)
+// func (g *DataGenerator) generateEventRSVPs(ctx context.Context, genConfig GenerationConfig) error {
+// 	collection := g.db.Collection("event_rsvps")
+// 	rsvps := make([]interface{}, 0)
 
-	for _, event := range g.events {
-		rsvpCount := rand.Intn(50) + 10 // 10-60 RSVPs per event
-		rsvpUsers := make(map[primitive.ObjectID]bool)
+// 	for _, event := range g.events {
+// 		rsvpCount := rand.Intn(50) + 10 // 10-60 RSVPs per event
+// 		rsvpUsers := make(map[primitive.ObjectID]bool)
 
-		for i := 0; i < rsvpCount; i++ {
-			user := g.users[rand.Intn(len(g.users))]
-			if rsvpUsers[user.ID] {
-				continue
-			}
-			rsvpUsers[user.ID] = true
+// 		for i := 0; i < rsvpCount; i++ {
+// 			user := g.users[rand.Intn(len(g.users))]
+// 			if rsvpUsers[user.ID] {
+// 				continue
+// 			}
+// 			rsvpUsers[user.ID] = true
 
-			statuses := []models.RSVPStatus{
-				models.RSVPGoing,
-				models.RSVPMaybe,
-				models.RSVPNotGoing,
-			}
-			status := statuses[rand.Intn(len(statuses))]
+// 			statuses := []models.RSVPStatus{
+// 				models.RSVPGoing,
+// 				models.RSVPMaybe,
+// 				models.RSVPNotGoing,
+// 			}
+// 			status := statuses[rand.Intn(len(statuses))]
 
-			rsvp := models.EventRSVP{
-				BaseModel: models.BaseModel{
-					ID:        primitive.NewObjectID(),
-					CreatedAt: gofakeit.DateRange(event.CreatedAt, time.Now()),
-				},
-				EventID:     event.ID,
-				UserID:      user.ID,
-				Status:      status,
-				Response:    gofakeit.Sentence(rand.Intn(8) + 2),
-				GuestCount:  rand.Intn(3),
-				RespondedAt: gofakeit.DateRange(event.CreatedAt, time.Now()),
-			}
+// 			rsvp := models.EventRSVP{
+// 				BaseModel: models.BaseModel{
+// 					ID:        primitive.NewObjectID(),
+// 					CreatedAt: gofakeit.DateRange(event.CreatedAt, time.Now()),
+// 				},
+// 				EventID:     event.ID,
+// 				UserID:      user.ID,
+// 				Status:      status,
+// 				Response:    gofakeit.Sentence(rand.Intn(8) + 2),
+// 				GuestCount:  rand.Intn(3),
+// 				RespondedAt: gofakeit.DateRange(event.CreatedAt, time.Now()),
+// 			}
 
-			rsvp.BeforeCreate()
-			rsvps = append(rsvps, rsvp)
-		}
-	}
+// 			rsvp.BeforeCreate()
+// 			rsvps = append(rsvps, rsvp)
+// 		}
+// 	}
 
-	if len(rsvps) > 0 {
-		batchSize := 100
-		for i := 0; i < len(rsvps); i += batchSize {
-			end := i + batchSize
-			if end > len(rsvps) {
-				end = len(rsvps)
-			}
+// 	if len(rsvps) > 0 {
+// 		batchSize := 100
+// 		for i := 0; i < len(rsvps); i += batchSize {
+// 			end := i + batchSize
+// 			if end > len(rsvps) {
+// 				end = len(rsvps)
+// 			}
 
-			if _, err := collection.InsertMany(ctx, rsvps[i:end]); err != nil {
-				return fmt.Errorf("failed to insert event RSVPs batch: %w", err)
-			}
-		}
-	}
+// 			if _, err := collection.InsertMany(ctx, rsvps[i:end]); err != nil {
+// 				return fmt.Errorf("failed to insert event RSVPs batch: %w", err)
+// 			}
+// 		}
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 func (g *DataGenerator) generatePostShares(ctx context.Context, genConfig GenerationConfig) error {
 	collection := g.db.Collection("posts")
@@ -1735,11 +1735,11 @@ func (g *DataGenerator) generateNotifications(ctx context.Context, genConfig Gen
 					group := g.groups[rand.Intn(len(g.groups))]
 					targetID = &group.ID
 				}
-			case models.NotificationEventInvite:
-				if len(g.events) > 0 {
-					event := g.events[rand.Intn(len(g.events))]
-					targetID = &event.ID
-				}
+				// case models.NotificationEventInvite:
+				// 	if len(g.events) > 0 {
+				// 		event := g.events[rand.Intn(len(g.events))]
+				// 		targetID = &event.ID
+				// 	}
 			}
 
 			notification := models.Notification{
@@ -2183,27 +2183,27 @@ func (g *DataGenerator) updateEventStatistics(ctx context.Context) error {
 	}
 
 	// Update events with RSVP counts
-	for _, event := range g.events {
-		stats := eventStats[event.ID]
-		update := bson.M{
-			"$set": bson.M{
-				"going_count":     stats["going"],
-				"maybe_count":     stats["maybe"],
-				"not_going_count": stats["not_going"],
-				"attendees_count": stats["going"] + stats["maybe"],
-				"updated_at":      time.Now(),
-			},
-		}
+	// for _, event := range g.events {
+	// 	stats := eventStats[event.ID]
+	// 	update := bson.M{
+	// 		"$set": bson.M{
+	// 			"going_count":     stats["going"],
+	// 			"maybe_count":     stats["maybe"],
+	// 			"not_going_count": stats["not_going"],
+	// 			"attendees_count": stats["going"] + stats["maybe"],
+	// 			"updated_at":      time.Now(),
+	// 		},
+	// 	}
 
-		_, err := g.db.Collection("events").UpdateOne(
-			ctx,
-			bson.M{"_id": event.ID},
-			update,
-		)
-		if err != nil {
-			log.Printf("Failed to update event statistics: %v", err)
-		}
-	}
+	// 	_, err := g.db.Collection("events").UpdateOne(
+	// 		ctx,
+	// 		bson.M{"_id": event.ID},
+	// 		update,
+	// 	)
+	// 	if err != nil {
+	// 		log.Printf("Failed to update event statistics: %v", err)
+	// 	}
+	// }
 
 	return nil
 }
@@ -2957,7 +2957,7 @@ Generated Features:
 ✅ Comprehensive statistics and analytics
 
 `, len(generator.users), len(generator.posts), len(generator.comments),
-		len(generator.stories), len(generator.groups), len(generator.events),
+		len(generator.stories), len(generator.groups), //len(generator.events),
 		len(generator.conversations), len(generator.hashtags), len(generator.media),
 		duration.Round(time.Second), genConfig.UserCount)
 }

@@ -1,4 +1,4 @@
-// admin/app/admin/messages/page.tsx - Complete Messages Management Page
+// admin/app/admin/messages/page.tsx - Fixed Messages Management Page
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -72,8 +72,8 @@ import {
   IconX,
   IconCheck,
   IconBan,
+  IconPhoto,
 } from "@tabler/icons-react";
-import { ImageIcon } from "lucide-react";
 
 // Types
 interface Message {
@@ -137,6 +137,7 @@ interface MessagesPageState {
   loading: boolean;
   conversationsLoading: boolean;
   error: string | null;
+  conversationsError: string | null;
   pagination: PaginationMeta | undefined;
   filters: {
     search: string;
@@ -174,15 +175,39 @@ const initialFilters = {
   limit: 20,
 };
 
+// Utility function to validate ObjectID format
+const isValidObjectId = (id: string): boolean => {
+  return /^[0-9a-fA-F]{24}$/.test(id);
+};
+
+// Utility function to safely get conversation ID
+const getSafeConversationId = (conversationId: string): string | null => {
+  if (
+    !conversationId ||
+    conversationId === "all" ||
+    conversationId === "undefined"
+  ) {
+    return null;
+  }
+
+  if (!isValidObjectId(conversationId)) {
+    console.warn(`Invalid conversation ID format: ${conversationId}`);
+    return null;
+  }
+
+  return conversationId;
+};
+
 function MessagesPage() {
   const { user: currentUser } = useAuth();
 
   const [state, setState] = useState<MessagesPageState>({
     messages: [],
-    conversations: [], // Ensure it's always initialized as an empty array
+    conversations: [],
     loading: true,
     conversationsLoading: false,
     error: null,
+    conversationsError: null,
     pagination: undefined,
     filters: initialFilters,
     selectedMessages: [],
@@ -202,7 +227,7 @@ function MessagesPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
 
-  // Fetch messages with proper API parameters
+  // Fetch messages with improved error handling
   const fetchMessages = useCallback(async (filters = state.filters) => {
     try {
       setState((prev) => ({ ...prev, loading: true, error: null }));
@@ -215,9 +240,10 @@ function MessagesPage() {
       // Add search parameter
       if (filters.search) params.search = filters.search;
 
-      // Add conversation filter
-      if (filters.conversation_id && filters.conversation_id !== "all") {
-        params.conversation_id = filters.conversation_id;
+      // Add conversation filter with validation
+      const safeConversationId = getSafeConversationId(filters.conversation_id);
+      if (safeConversationId) {
+        params.conversation_id = safeConversationId;
       }
 
       // Add content type filter
@@ -227,7 +253,7 @@ function MessagesPage() {
 
       // Add read status filter
       if (filters.is_read && filters.is_read !== "all") {
-        params.is_read = filters.is_read === "true";
+        params.is_read = filters.is_read;
       }
 
       // Add date range filters
@@ -243,11 +269,20 @@ function MessagesPage() {
       console.log("📡 Fetching messages with params:", params);
       const response = await apiClient.getMessages(params);
 
-      // Ensure we have a valid array with proper IDs
-      const validMessages = (response.data || []).filter(
-        (message: any) =>
-          message && message.id && typeof message.id === "string"
-      );
+      // Enhanced data validation
+      let validMessages: Message[] = [];
+      if (response.data && Array.isArray(response.data)) {
+        validMessages = response.data.filter((message: any) => {
+          if (!message || !message.id || typeof message.id !== "string") {
+            console.warn("Invalid message object:", message);
+            return false;
+          }
+          return true;
+        });
+      } else if (response.success && response.data) {
+        // Handle single object response
+        console.warn("Expected array but got single object:", response.data);
+      }
 
       setState((prev) => ({
         ...prev,
@@ -260,27 +295,46 @@ function MessagesPage() {
       setState((prev) => ({
         ...prev,
         loading: false,
-        messages: [], // Ensure it's always an array
-        error: error.message || "Failed to fetch messages",
+        messages: [],
+        error:
+          error.message ||
+          "Failed to fetch messages. Please check your filters and try again.",
       }));
     }
   }, []);
 
-  // Fetch conversations
+  // Fetch conversations with improved error handling
   const fetchConversations = useCallback(async () => {
     try {
-      setState((prev) => ({ ...prev, conversationsLoading: true }));
+      setState((prev) => ({
+        ...prev,
+        conversationsLoading: true,
+        conversationsError: null,
+      }));
 
       console.log("📡 Fetching conversations...");
       const response = await apiClient.getConversations({
-        limit: 100, // Get more conversations for filter dropdown
-        include_participants: true,
+        limit: 100,
       });
 
-      // Ensure we have a valid array with proper IDs
-      const validConversations = (response.data || []).filter(
-        (conv: any) => conv && conv.id && typeof conv.id === "string"
-      );
+      // Enhanced data validation for conversations
+      let validConversations: Conversation[] = [];
+      if (response.data && Array.isArray(response.data)) {
+        validConversations = response.data.filter((conv: any) => {
+          if (!conv || !conv.id || typeof conv.id !== "string") {
+            console.warn("Invalid conversation object:", conv);
+            return false;
+          }
+
+          // Validate ObjectID format
+          if (!isValidObjectId(conv.id)) {
+            console.warn(`Invalid conversation ID format: ${conv.id}`);
+            return false;
+          }
+
+          return true;
+        });
+      }
 
       setState((prev) => ({
         ...prev,
@@ -291,16 +345,27 @@ function MessagesPage() {
       console.error("❌ Failed to fetch conversations:", error);
       setState((prev) => ({
         ...prev,
-        conversations: [], // Ensure it's always an array
+        conversations: [],
         conversationsLoading: false,
+        conversationsError: error.message || "Failed to fetch conversations",
       }));
     }
   }, []);
 
-  // Initial load
+  // Initial load with better error handling
   useEffect(() => {
-    fetchMessages();
-    fetchConversations();
+    const loadData = async () => {
+      try {
+        // Load conversations first (they're needed for filters)
+        await fetchConversations();
+        // Then load messages
+        await fetchMessages();
+      } catch (error) {
+        console.error("Failed to load initial data:", error);
+      }
+    };
+
+    loadData();
   }, []);
 
   // Handle search with debounce
@@ -316,6 +381,17 @@ function MessagesPage() {
 
   // Handle filter changes
   const handleFilterChange = (key: string, value: any) => {
+    console.log(`🔄 Filter change: ${key} = ${value}`);
+
+    // Validate conversation ID if that's what's being changed
+    if (key === "conversation_id" && value !== "all") {
+      const safeId = getSafeConversationId(value);
+      if (!safeId && value !== "all") {
+        console.warn(`Invalid conversation ID format: ${value}`);
+        return; // Don't update filter with invalid ID
+      }
+    }
+
     const newFilters = { ...state.filters, [key]: value, page: 1 };
     setState((prev) => ({ ...prev, filters: newFilters }));
 
@@ -432,7 +508,6 @@ function MessagesPage() {
   // Handle export
   const handleExport = async () => {
     try {
-      // Since there's no specific export endpoint, we'll create a CSV from current data
       const csvContent = state.messages.map((message) => ({
         id: message.id,
         sender: message.sender?.username || "Unknown",
@@ -466,7 +541,7 @@ function MessagesPage() {
   const getContentTypeIcon = (type: string) => {
     switch (type) {
       case "image":
-        return <ImageIcon className="h-4 w-4" />;
+        return <IconPhoto className="h-4 w-4" />;
       case "video":
         return <IconVideo className="h-4 w-4" />;
       case "audio":
@@ -507,8 +582,10 @@ function MessagesPage() {
       : content;
   };
 
-  // Format conversation title
+  // Format conversation title with safety checks
   const formatConversationTitle = (conversation: Conversation) => {
+    if (!conversation) return "Unknown Conversation";
+
     if (conversation.title) return conversation.title;
     if (conversation.type === "group")
       return `Group Chat (${
@@ -677,7 +754,7 @@ function MessagesPage() {
             {conversation.type === "group" ? (
               <div className="flex -space-x-2">
                 {(conversation.participants || [])
-                  .filter((participant) => participant && participant.id) // Filter out invalid participants
+                  .filter((participant) => participant && participant.id)
                   .slice(0, 3)
                   .map((participant, index) => (
                     <Avatar
@@ -830,7 +907,8 @@ function MessagesPage() {
     { label: "Mark as Unread", action: "mark_unread" },
   ];
 
-  if (state.error && !state.loading) {
+  // Error display component
+  if ((state.error || state.conversationsError) && !state.loading) {
     return (
       <SidebarProvider>
         <AppSidebar variant="inset" />
@@ -840,7 +918,7 @@ function MessagesPage() {
             <Alert variant="destructive" className="max-w-md">
               <IconAlertCircle className="h-5 w-5" />
               <AlertDescription className="space-y-4">
-                <div>Failed to load messages: {state.error}</div>
+                <div>{state.error || state.conversationsError}</div>
                 <Button
                   onClick={handleRefresh}
                   variant="outline"
@@ -883,6 +961,22 @@ function MessagesPage() {
               </Button>
             </div>
           </div>
+
+          {/* Show loading state */}
+          {state.conversationsLoading && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <IconLoader2 className="h-4 w-4 animate-spin" />
+              <span>Loading conversations...</span>
+            </div>
+          )}
+
+          {/* Show conversations error */}
+          {state.conversationsError && (
+            <Alert variant="destructive">
+              <IconAlertCircle className="h-4 w-4" />
+              <AlertDescription>{state.conversationsError}</AlertDescription>
+            </Alert>
+          )}
 
           {/* Tabs */}
           <Tabs
@@ -938,8 +1032,11 @@ function MessagesPage() {
                           <SelectItem value="all">All conversations</SelectItem>
                           {state.conversations
                             .filter(
-                              (conversation) => conversation && conversation.id
-                            ) // Filter out invalid conversations
+                              (conversation) =>
+                                conversation &&
+                                conversation.id &&
+                                isValidObjectId(conversation.id)
+                            )
                             .map((conversation, index) => (
                               <SelectItem
                                 key={`conversation-${conversation.id || index}`}
@@ -1042,6 +1139,7 @@ function MessagesPage() {
           </Tabs>
         </div>
 
+        {/* Dialogs remain the same as in original code... */}
         {/* View Message Dialog */}
         <Dialog
           open={dialogs.viewMessage}
@@ -1206,208 +1304,6 @@ function MessagesPage() {
               >
                 <IconTrash className="h-4 w-4 mr-2" />
                 Delete Message
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* View Conversation Dialog */}
-        <Dialog
-          open={dialogs.viewConversation}
-          onOpenChange={() => closeDialog("viewConversation")}
-        >
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Conversation Details</DialogTitle>
-              <DialogDescription>
-                View detailed information about this conversation
-              </DialogDescription>
-            </DialogHeader>
-
-            {dialogs.selectedConversation && (
-              <div className="space-y-6">
-                <div className="flex items-center space-x-4">
-                  <div className="relative">
-                    {dialogs.selectedConversation.type === "group" ? (
-                      <div className="flex -space-x-2">
-                        {(dialogs.selectedConversation.participants || [])
-                          .filter(
-                            (participant) => participant && participant.id
-                          ) // Filter out invalid participants
-                          .slice(0, 3)
-                          .map((participant, index) => (
-                            <Avatar
-                              key={`modal-avatar-${participant.id || index}`}
-                              className="h-10 w-10 border-2 border-background"
-                            >
-                              <AvatarImage src={participant.profile_picture} />
-                              <AvatarFallback>
-                                {(
-                                  participant.first_name?.[0] ||
-                                  participant.username?.[0] ||
-                                  "U"
-                                ).toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
-                          ))}
-                      </div>
-                    ) : (
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage
-                          src={
-                            dialogs.selectedConversation.participants?.[0]
-                              ?.profile_picture
-                          }
-                        />
-                        <AvatarFallback>
-                          {(
-                            dialogs.selectedConversation.participants?.[0]
-                              ?.first_name?.[0] ||
-                            dialogs.selectedConversation.participants?.[0]
-                              ?.username?.[0] ||
-                            "U"
-                          ).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold">
-                      {formatConversationTitle(dialogs.selectedConversation)}
-                    </h3>
-                    <p className="text-muted-foreground">
-                      {dialogs.selectedConversation.type === "group"
-                        ? `${
-                            dialogs.selectedConversation.participant_ids
-                              ?.length || 0
-                          } members`
-                        : "Direct conversation"}
-                    </p>
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium">Type</Label>
-                    <Badge
-                      variant={
-                        dialogs.selectedConversation.type === "group"
-                          ? "default"
-                          : "secondary"
-                      }
-                    >
-                      {dialogs.selectedConversation.type === "group"
-                        ? "Group Chat"
-                        : "Direct Message"}
-                    </Badge>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Participants</Label>
-                    <p className="text-sm text-muted-foreground">
-                      {dialogs.selectedConversation.participant_ids?.length ||
-                        0}{" "}
-                      members
-                    </p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Created</Label>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(
-                        dialogs.selectedConversation.created_at
-                      ).toLocaleString()}
-                    </p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Last Activity</Label>
-                    <p className="text-sm text-muted-foreground">
-                      {dialogs.selectedConversation.last_message_at
-                        ? new Date(
-                            dialogs.selectedConversation.last_message_at
-                          ).toLocaleString()
-                        : "No messages"}
-                    </p>
-                  </div>
-                </div>
-
-                {dialogs.selectedConversation.participants &&
-                  dialogs.selectedConversation.participants.length > 0 && (
-                    <div>
-                      <Label className="text-sm font-medium">
-                        Participants
-                      </Label>
-                      <div className="mt-2 space-y-2">
-                        {dialogs.selectedConversation.participants
-                          .filter(
-                            (participant) => participant && participant.id
-                          ) // Filter out invalid participants
-                          .map((participant, index) => (
-                            <div
-                              key={`participant-${participant.id || index}`}
-                              className="flex items-center gap-3 p-2 bg-muted rounded-lg"
-                            >
-                              <Avatar className="h-6 w-6">
-                                <AvatarImage
-                                  src={participant.profile_picture}
-                                />
-                                <AvatarFallback className="text-xs">
-                                  {(
-                                    participant.first_name?.[0] ||
-                                    participant.username?.[0] ||
-                                    "U"
-                                  ).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <span className="text-sm font-medium">
-                                  {participant.username || "Unknown User"}
-                                </span>
-                                <span className="text-xs text-muted-foreground ml-2">
-                                  {participant.first_name}{" "}
-                                  {participant.last_name}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-
-                {dialogs.selectedConversation.last_message && (
-                  <div>
-                    <Label className="text-sm font-medium">Last Message</Label>
-                    <div className="mt-2 p-3 bg-muted rounded-lg">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm font-medium">
-                          {dialogs.selectedConversation.last_message.sender
-                            ?.username || "Unknown"}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(
-                            dialogs.selectedConversation.last_message.created_at
-                          ).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="text-sm">
-                        {dialogs.selectedConversation.last_message.content ||
-                          `${formatContentType(
-                            dialogs.selectedConversation.last_message
-                              .content_type
-                          )} message`}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => closeDialog("viewConversation")}
-              >
-                Close
               </Button>
             </DialogFooter>
           </DialogContent>

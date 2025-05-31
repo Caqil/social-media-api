@@ -1694,7 +1694,7 @@ func (h *AdminHandler) BulkStoryAction(c *gin.Context) {
 	})
 }
 
-// GetAllConversations with enhanced filtering and data structure
+// GetAllConversations with enhanced filtering and data structure - FIXED
 func (h *AdminHandler) GetAllConversations(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
@@ -1923,7 +1923,6 @@ func (h *AdminHandler) GetAllConversations(c *gin.Context) {
 	links := h.createPaginationLinks(c, pagination)
 	utils.PaginatedSuccessResponse(c, "Conversations retrieved successfully", conversations, *pagination, links)
 }
-
 // GetConversationMessages retrieves all messages in a specific conversation
 func (h *AdminHandler) GetConversationMessages(c *gin.Context) {
 	conversationID := c.Param("id")
@@ -2310,7 +2309,7 @@ func (h *AdminHandler) GetConversationReports(c *gin.Context) {
 	utils.OkResponse(c, "Conversation reports retrieved successfully", reports)
 }
 
-// Message Management
+// GetAllMessages with enhanced filtering and data structure
 func (h *AdminHandler) GetAllMessages(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
@@ -2331,10 +2330,15 @@ func (h *AdminHandler) GetAllMessages(c *gin.Context) {
 		}
 	}
 
-	// Add conversation_id filter if provided
+	// Add conversation_id filter if provided - FIXED: Better validation
 	if conversationID := c.Query("conversation_id"); conversationID != "" && conversationID != "all" {
+		// Validate ObjectID format before using
 		if objID, err := primitive.ObjectIDFromHex(conversationID); err == nil {
 			matchFilter["conversation_id"] = objID
+		} else {
+			// Return error for invalid ObjectID instead of silently ignoring
+			utils.BadRequestResponse(c, "Invalid conversation ID format", nil)
+			return
 		}
 	}
 

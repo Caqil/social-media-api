@@ -1,6 +1,8 @@
 // lib/api-client.ts - Complete Updated API Client with Conversation Management
 import { DashboardStats, User } from '@/types/admin'
-
+const isValidObjectId = (id: string): boolean => {
+  return /^[0-9a-fA-F]{24}$/.test(id);
+};
 export interface ApiResponse<T = any> {
   success: boolean
   message: string
@@ -862,23 +864,60 @@ class FetchApiClient {
     sort_order?: 'asc' | 'desc'
   }): Promise<PaginatedResponse> {
     try {
-      console.log('📡 Fetching messages with params:', params);
-      const response = await this.get<any>('/api/v1/admin/messages', params);
+      // Clean up params before sending
+      const cleanParams: any = {};
       
-      if (Array.isArray(response.data)) {
+      if (params) {
+        Object.keys(params).forEach(key => {
+          const value = params[key as keyof typeof params];
+          
+          // Skip undefined, null, empty strings, and "all" values
+          if (value !== undefined && value !== null && value !== '' && value !== 'all') {
+            // Special validation for conversation_id
+            if (key === 'conversation_id') {
+              if (isValidObjectId(value as string)) {
+                cleanParams[key] = value;
+              } else {
+                console.warn(`Invalid conversation_id format: ${value}`);
+                // Don't include invalid ObjectIDs in the request
+              }
+            } else {
+              cleanParams[key] = value;
+            }
+          }
+        });
+      }
+      
+      console.log('📡 Fetching messages with cleaned params:', cleanParams);
+      const response = await this.get<any>('/api/v1/admin/messages', cleanParams);
+      
+      // Validate response data
+      if (response.data && Array.isArray(response.data)) {
+        // Filter out any invalid messages
+        const validMessages = response.data.filter(message => 
+          message && 
+          message.id && 
+          typeof message.id === 'string' &&
+          isValidObjectId(message.id)
+        );
+        
+        if (validMessages.length !== response.data.length) {
+          console.warn(`Filtered out ${response.data.length - validMessages.length} invalid messages`);
+        }
+        
         return {
           success: true,
           message: 'Messages fetched successfully',
-          data: response.data,
-          pagination: {
-            current_page: 1,
-            per_page: response.data.length,
-            total: response.data.length,
+          data: validMessages,
+          pagination: response.pagination || {
+            current_page: cleanParams.page || 1,
+            per_page: validMessages.length,
+            total: validMessages.length,
             total_pages: 1,
             has_next: false,
             has_previous: false
           }
-        }
+        };
       }
       
       return response as PaginatedResponse;
@@ -893,7 +932,12 @@ class FetchApiClient {
   }
 
   async deleteMessage(id: string, reason?: string): Promise<ApiResponse<any>> {
-    return this.delete(`/api/v1/admin/messages/${id}`, { reason })
+    // Validate ID before making request
+    if (!id || typeof id !== 'string' || !isValidObjectId(id)) {
+      throw new Error('Invalid message ID format');
+    }
+    
+    return this.delete(`/api/v1/admin/messages/${id}`, { reason });
   }
 
   async bulkMessageAction(data: { 
@@ -901,7 +945,28 @@ class FetchApiClient {
     action: string
     reason?: string 
   }): Promise<ApiResponse<any>> {
-    return this.post('/api/v1/admin/messages/bulk/actions', data)
+    // Validate message IDs
+    if (!data.message_ids || !Array.isArray(data.message_ids) || data.message_ids.length === 0) {
+      throw new Error('Invalid message IDs for bulk action');
+    }
+    
+    // Filter out any invalid IDs
+    const validIds = data.message_ids.filter(id => 
+      id && typeof id === 'string' && isValidObjectId(id)
+    );
+    
+    if (validIds.length === 0) {
+      throw new Error('No valid message IDs for bulk action');
+    }
+    
+    if (validIds.length !== data.message_ids.length) {
+      console.warn(`Filtered out ${data.message_ids.length - validIds.length} invalid message IDs`);
+    }
+    
+    return this.post('/api/v1/admin/messages/bulk/actions', {
+      ...data,
+      message_ids: validIds
+    });
   }
 
   // ==================== CONVERSATION MANAGEMENT (NEW) ====================
@@ -918,23 +983,50 @@ class FetchApiClient {
     sort_order?: 'asc' | 'desc'
   }): Promise<PaginatedResponse> {
     try {
-      console.log('📡 Fetching conversations with params:', params);
-      const response = await this.get<any>('/api/v1/admin/conversations', params);
+      // Clean up params before sending
+      const cleanParams: any = {};
       
-      if (Array.isArray(response.data)) {
+      if (params) {
+        Object.keys(params).forEach(key => {
+          const value = params[key as keyof typeof params];
+          
+          // Skip undefined, null, empty strings, and "all" values
+          if (value !== undefined && value !== null && value !== '' && value !== 'all') {
+            cleanParams[key] = value;
+          }
+        });
+      }
+      
+      console.log('📡 Fetching conversations with cleaned params:', cleanParams);
+      const response = await this.get<any>('/api/v1/admin/conversations', cleanParams);
+      
+      // Validate response data
+      if (response.data && Array.isArray(response.data)) {
+        // Filter out any invalid conversations
+        const validConversations = response.data.filter(conversation => 
+          conversation && 
+          conversation.id && 
+          typeof conversation.id === 'string' &&
+          isValidObjectId(conversation.id)
+        );
+        
+        if (validConversations.length !== response.data.length) {
+          console.warn(`Filtered out ${response.data.length - validConversations.length} invalid conversations`);
+        }
+        
         return {
           success: true,
           message: 'Conversations fetched successfully',
-          data: response.data,
-          pagination: {
-            current_page: 1,
-            per_page: response.data.length,
-            total: response.data.length,
+          data: validConversations,
+          pagination: response.pagination || {
+            current_page: cleanParams.page || 1,
+            per_page: validConversations.length,
+            total: validConversations.length,
             total_pages: 1,
             has_next: false,
             has_previous: false
           }
-        }
+        };
       }
       
       return response as PaginatedResponse;
@@ -943,6 +1035,7 @@ class FetchApiClient {
       throw error;
     }
   }
+  
 
   async getConversation(id: string): Promise<ApiResponse<any>> {
     return this.get(`/api/v1/admin/conversations/${id}`)

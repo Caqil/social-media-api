@@ -737,6 +737,90 @@ func (h *AdminHandler) GetComment(c *gin.Context) {
 	utils.OkResponse(c, "Comment retrieved successfully", comment)
 }
 
+// UpdateComment updates a comment content
+func (h *AdminHandler) UpdateComment(c *gin.Context) {
+	id := c.Param("id")
+
+	var input struct {
+		Content string `json:"content" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "Invalid input", err)
+		return
+	}
+
+	// Get admin user for audit logging
+	adminUser, exists := c.Get("user")
+	if !exists {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "Admin authentication required", nil)
+		return
+	}
+
+	// Update the comment
+	objID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "Invalid comment ID", err)
+		return
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"content":    input.Content,
+			"updated_at": time.Now(),
+			"edited_by":  adminUser.(models.User).ID,
+		},
+	}
+
+	_, err = h.db.Collection("comments").UpdateOne(c, bson.M{"_id": objID}, update)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to update comment", err)
+		return
+	}
+
+	h.logAdminActivity(c, "comment_update", fmt.Sprintf("Updated comment %s", id))
+
+	// Return success response
+	utils.SuccessResponse(c, http.StatusOK, "Comment updated successfully", nil)
+}
+
+// ShowComment makes a hidden comment visible
+func (h *AdminHandler) ShowComment(c *gin.Context) {
+	id := c.Param("id")
+
+	// Get admin user for audit logging
+	adminUser, exists := c.Get("user")
+	if !exists {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "Admin authentication required", nil)
+		return
+	}
+
+	// Update the comment
+	objID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "Invalid comment ID", err)
+		return
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"is_hidden":    false,
+			"updated_at":   time.Now(),
+			"moderated_by": adminUser.(models.User).ID,
+		},
+	}
+
+	_, err = h.db.Collection("comments").UpdateOne(c, bson.M{"_id": objID}, update)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to show comment", err)
+		return
+	}
+
+	h.logAdminActivity(c, "comment_show", fmt.Sprintf("Unhid comment %s", id))
+
+	// Return success response
+	utils.SuccessResponse(c, http.StatusOK, "Comment is now visible", nil)
+}
 func (h *AdminHandler) HideComment(c *gin.Context) {
 	commentID := c.Param("id")
 	objID, err := primitive.ObjectIDFromHex(commentID)

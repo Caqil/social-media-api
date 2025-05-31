@@ -111,6 +111,9 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, a
 		comments.PUT("/:id/hide", middleware.ValidateObjectID("id"), adminHandler.HideComment)
 		comments.DELETE("/:id", middleware.ValidateObjectID("id"), adminHandler.DeleteComment)
 		comments.POST("/bulk/actions", adminHandler.BulkCommentAction)
+		
+		comments.PUT("/:id", middleware.ValidateObjectID("id"), adminHandler.UpdateComment)
+		comments.PUT("/:id/show", middleware.ValidateObjectID("id"), adminHandler.ShowComment)
 	}
 
 	// Group Management

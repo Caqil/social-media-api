@@ -1,5 +1,5 @@
 // lib/api-client.ts - Complete API Client Based on Go Routes
-import { DashboardStats } from '@/types/admin'
+import { DashboardStats, User } from '@/types/admin'
 
 export interface ApiResponse<T = any> {
   success: boolean
@@ -450,7 +450,55 @@ class FetchApiClient {
       throw error
     }
   }
-
+  async getUsersByIds(userIds: string[]): Promise<ApiResponse<User[]>> {
+    if (!userIds || userIds.length === 0) {
+      return {
+        success: true,
+        message: 'No user IDs provided',
+        data: []
+      };
+    }
+    
+    try {
+      // Convert array of IDs to comma-separated string
+      const ids = userIds.join(',');
+      console.log(`🔄 Fetching users by IDs: ${ids}`);
+      
+      // Try first with the ids parameter
+      const response = await this.get<User[]>('/api/v1/admin/users', { ids });
+      
+      // If no users were returned, try with individual requests
+      if (!response.data || !Array.isArray(response.data) || response.data.length === 0) {
+        console.log('⚠️ No users found with batch request, trying individual requests');
+        
+        const users: User[] = [];
+        for (const userId of userIds) {
+          try {
+            const userResponse = await this.get<User>(`/api/v1/admin/users/${userId}`);
+            if (userResponse.data) {
+              users.push(userResponse.data);
+            }
+          } catch (error) {
+            console.error(`❌ Failed to fetch user ${userId}:`, error);
+            // Continue with the next user
+          }
+        }
+        
+        if (users.length > 0) {
+          return {
+            success: true,
+            message: 'Users fetched individually',
+            data: users
+          };
+        }
+      }
+      
+      return response;
+    } catch (error) {
+      console.error('❌ Failed to fetch users by IDs:', error);
+      throw error;
+    }
+  }
   async searchUsers(params?: any): Promise<PaginatedResponse> {
     try {
       const response = await this.get<any>('/api/v1/admin/users/search', params)
@@ -556,7 +604,61 @@ class FetchApiClient {
     date_to?: string
   }): Promise<PaginatedResponse> {
     try {
-      const response = await this.get<any>('/api/v1/admin/posts', params)
+      // Always include these parameters to ensure we get user data
+      const enhancedParams = {
+        ...params,
+        include_user: true,     // Request user data inclusion
+        expand: 'user,media',   // Explicitly request user expansion if API supports it
+      };
+      
+      console.log('🔄 Fetching posts with enhanced params:', enhancedParams);
+      const response = await this.get<any>('/api/v1/admin/posts', enhancedParams);
+      
+      // If posts are returned without user data, fetch the user data separately
+      if (response.data && Array.isArray(response.data)) {
+        const needsUserData = response.data.filter(post => 
+          post.user_id && (!post.user || !post.user.username)
+        );
+        
+        if (needsUserData.length > 0) {
+          console.log(`⚠️ Found ${needsUserData.length} posts without complete user data, fetching users...`);
+          
+          // Get unique user IDs that need to be fetched
+          const userIds = [...new Set(needsUserData.map(post => post.user_id))];
+          
+          // Fetch users data if there are posts missing user information
+          if (userIds.length > 0) {
+            try {
+              // Batch user fetch by user IDs if API supports it
+              const usersResponse = await this.get<any>('/api/v1/admin/users', {
+                ids: userIds.join(',')
+              });
+              
+              if (usersResponse.data && Array.isArray(usersResponse.data)) {
+                const usersMap = new Map();
+                usersResponse.data.forEach(user => {
+                  usersMap.set(user.id, user);
+                });
+                
+                // Update posts with fetched user data
+                response.data = response.data.map(post => {
+                  if (post.user_id && (!post.user || !post.user.username)) {
+                    const userData = usersMap.get(post.user_id);
+                    if (userData) {
+                      post.user = userData;
+                    }
+                  }
+                  return post;
+                });
+                
+                console.log('✅ Updated posts with user data');
+              }
+            } catch (userFetchError) {
+              console.error('❌ Failed to fetch users data:', userFetchError);
+            }
+          }
+        }
+      }
       
       if (Array.isArray(response.data)) {
         return {
@@ -574,10 +676,10 @@ class FetchApiClient {
         }
       }
       
-      return response as PaginatedResponse
+      return response as PaginatedResponse;
     } catch (error) {
-      console.error('❌ Get posts error:', error)
-      throw error
+      console.error('❌ Get posts error:', error);
+      throw error;
     }
   }
 
@@ -637,9 +739,27 @@ class FetchApiClient {
   }
 
   // ==================== COMMENT MANAGEMENT ====================
-  async getComments(params?: any): Promise<PaginatedResponse> {
+  async getComments(params?: {
+    page?: number
+    limit?: number
+    post_id?: string
+    user_id?: string
+    is_hidden?: boolean
+    is_reported?: boolean
+    search?: string
+    date_from?: string
+    date_to?: string
+  }): Promise<PaginatedResponse> {
     try {
-      const response = await this.get<any>('/api/v1/admin/comments', params)
+      // Always include parameters to ensure we get user data
+      const enhancedParams = {
+        ...params,
+        include_user: true,     // Request user data inclusion
+        expand: 'user,post',    // Explicitly request user and post expansion
+      };
+      
+      console.log('📡 Fetching comments with enhanced params:', enhancedParams);
+      const response = await this.get<any>('/api/v1/admin/comments', enhancedParams);
       
       if (Array.isArray(response.data)) {
         return {
@@ -657,37 +777,158 @@ class FetchApiClient {
         }
       }
       
-      return response as PaginatedResponse
+      return response as PaginatedResponse;
     } catch (error) {
-      console.error('❌ Get comments error:', error)
-      throw error
+      console.error('❌ Get comments error:', error);
+      throw error;
     }
   }
-
+  
   async getComment(id: string): Promise<ApiResponse<any>> {
-    return this.get(`/api/v1/admin/comments/${id}`)
+    // Validate ID
+    if (!id || typeof id !== 'string' || id === 'undefined') {
+      return Promise.reject(new Error('Invalid comment ID'));
+    }
+    return this.get(`/api/v1/admin/comments/${id}`);
   }
-
+  
+  async updateComment(id: string, data: { content: string }): Promise<ApiResponse<any>> {
+    // Validate ID
+    if (!id || typeof id !== 'string' || id === 'undefined') {
+      return Promise.reject(new Error('Invalid comment ID'));
+    }
+    return this.put(`/api/v1/admin/comments/${id}`, data);
+  }
+  
   async hideComment(id: string, reason?: string): Promise<ApiResponse<any>> {
-    return this.put(`/api/v1/admin/comments/${id}/hide`, { reason })
+    // Validate ID
+    if (!id || typeof id !== 'string' || id === 'undefined') {
+      return Promise.reject(new Error('Invalid comment ID'));
+    }
+    return this.put(`/api/v1/admin/comments/${id}/hide`, { reason });
   }
-
+  
+  async showComment(id: string): Promise<ApiResponse<any>> {
+    // Validate ID
+    if (!id || typeof id !== 'string' || id === 'undefined') {
+      return Promise.reject(new Error('Invalid comment ID'));
+    }
+    return this.put(`/api/v1/admin/comments/${id}/show`);
+  }
+  
   async deleteComment(id: string, reason?: string): Promise<ApiResponse<any>> {
-    return this.delete(`/api/v1/admin/comments/${id}`, { reason })
+    // Validate ID
+    if (!id || typeof id !== 'string' || id === 'undefined') {
+      return Promise.reject(new Error('Invalid comment ID'));
+    }
+    return this.delete(`/api/v1/admin/comments/${id}`, { reason });
   }
-
+  
   async bulkCommentAction(data: { 
-    comment_ids: string[]
-    action: string
-    reason?: string 
+    comment_ids: string[];
+    action: string;
+    reason?: string; 
   }): Promise<ApiResponse<any>> {
-    return this.post('/api/v1/admin/comments/bulk/actions', data)
+    // Validate comment IDs
+    if (!data.comment_ids || !Array.isArray(data.comment_ids) || data.comment_ids.length === 0) {
+      return Promise.reject(new Error('Invalid comment IDs for bulk action'));
+    }
+    
+    // Filter out any invalid IDs
+    data.comment_ids = data.comment_ids.filter(id => 
+      id && typeof id === 'string' && id !== 'undefined'
+    );
+    
+    if (data.comment_ids.length === 0) {
+      return Promise.reject(new Error('No valid comment IDs for bulk action'));
+    }
+    
+    return this.post('/api/v1/admin/comments/bulk/actions', data);
   }
 
   // ==================== GROUP MANAGEMENT ====================
-  async getGroups(params?: any): Promise<PaginatedResponse> {
+  async getGroups(params?: {
+    page?: number
+    limit?: number
+    type?: string
+    category?: string
+    is_verified?: boolean
+    is_active?: boolean
+    search?: string
+    created_by?: string
+    min_members?: number
+    date_from?: string
+    date_to?: string
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
+    include_creator?: boolean
+    expand?: string
+  }): Promise<PaginatedResponse> {
     try {
-      const response = await this.get<any>('/api/v1/admin/groups', params)
+      // Always include parameters to ensure we get creator data
+      const enhancedParams = {
+        ...params,
+        include_creator: true,     // Request creator data inclusion
+        expand: params?.expand || 'creator,stats',   // Explicitly request creator and stats expansion
+      };
+      
+      // Debug the parameters being sent to the API
+      console.log('📡 getGroups API request params:', enhancedParams);
+      
+      // Make a copy of params to safely modify
+      const apiParams = { ...enhancedParams };
+      
+      // Handle special params that might need different keys or formats for the API
+      // These adjustments should be based on the API documentation
+      
+      // Example: If the API expects 'group_type' instead of 'type'
+      if (apiParams.type !== undefined) {
+        // Keep the original type parameter, but also add the alternative
+        apiParams.group_type = apiParams.type;
+      }
+      
+      // Example: If the API expects 'group_category' instead of 'category'
+      if (apiParams.category !== undefined) {
+        // Keep the original category parameter, but also add the alternative
+        apiParams.group_category = apiParams.category;
+      }
+      
+      // Example: If the API expects 'verified' instead of 'is_verified'
+      if (apiParams.is_verified !== undefined) {
+        // Keep the original is_verified parameter, but also add the alternative
+        apiParams.verified = apiParams.is_verified;
+      }
+      
+      // Example: If the API expects 'active' instead of 'is_active'
+      if (apiParams.is_active !== undefined) {
+        // Keep the original is_active parameter, but also add the alternative
+        apiParams.active = apiParams.is_active;
+      }
+      
+      // Log the modified params
+      console.log('📡 Modified API params for compatibility:', apiParams);
+      
+      const response = await this.get<any>('/api/v1/admin/groups', apiParams);
+      
+      // Process the response to normalize creator data if needed
+      if (response.data && Array.isArray(response.data)) {
+        console.log(`✅ Received ${response.data.length} groups from API`);
+        
+        // Map through groups to normalize creator data
+        response.data = response.data.map(group => {
+          // If there's a created_by ID but no creator object
+          if (group.created_by && !group.creator) {
+            // The API might return creator under a different name
+            const creatorData = group.owner || group.admin || group.created_by_user;
+            
+            if (creatorData) {
+              group.creator = creatorData;
+              console.log(`🔄 Normalized creator data for group ${group.id}`);
+            }
+          }
+          return group;
+        });
+      }
       
       if (Array.isArray(response.data)) {
         return {
@@ -705,63 +946,75 @@ class FetchApiClient {
         }
       }
       
-      return response as PaginatedResponse
+      return response as PaginatedResponse;
     } catch (error) {
-      console.error('❌ Get groups error:', error)
-      throw error
+      console.error('❌ Get groups error:', error);
+      throw error;
     }
   }
 
-  async getGroup(id: string): Promise<ApiResponse<any>> {
-    return this.get(`/api/v1/admin/groups/${id}`)
-  }
+async getGroup(id: string): Promise<ApiResponse<any>> {
+  return this.get(`/api/v1/admin/groups/${id}`);
+}
 
-  async getGroupMembers(id: string, params?: any): Promise<PaginatedResponse> {
-    try {
-      const response = await this.get<any>(`/api/v1/admin/groups/${id}/members`, params)
-      
-      if (Array.isArray(response.data)) {
-        return {
-          success: true,
-          message: 'Group members fetched successfully',
-          data: response.data,
-          pagination: {
-            current_page: 1,
-            per_page: response.data.length,
-            total: response.data.length,
-            total_pages: 1,
-            has_next: false,
-            has_previous: false
-          }
+async getGroupMembers(groupId: string, params?: {
+  page?: number
+  limit?: number
+  role?: string
+  search?: string
+  include_user?: boolean  // Add this property to the type
+}): Promise<PaginatedResponse> {
+  try {
+    const enhancedParams = {
+      ...params,
+      include_user: true,  // Request user data inclusion
+    };
+    
+    const response = await this.get<any>(`/api/v1/admin/groups/${groupId}/members`, enhancedParams);
+    
+    if (Array.isArray(response.data)) {
+      return {
+        success: true,
+        message: 'Group members fetched successfully',
+        data: response.data,
+        pagination: {
+          current_page: 1,
+          per_page: response.data.length,
+          total: response.data.length,
+          total_pages: 1,
+          has_next: false,
+          has_previous: false
         }
       }
-      
-      return response as PaginatedResponse
-    } catch (error) {
-      console.error('❌ Get group members error:', error)
-      throw error
     }
+    
+    return response as PaginatedResponse;
+  } catch (error) {
+    console.error('❌ Get group members error:', error);
+    throw error;
   }
+}
 
-  async updateGroupStatus(id: string, data: { 
-    is_active?: boolean
-    status?: string
-    reason?: string 
-  }): Promise<ApiResponse<any>> {
-    return this.put(`/api/v1/admin/groups/${id}/status`, data)
-  }
+async updateGroupStatus(id: string, data: {
+  is_active?: boolean
+  status?: string
+  reason?: string
+}): Promise<ApiResponse<any>> {
+  return this.put(`/api/v1/admin/groups/${id}/status`, data);
+}
 
-  async deleteGroup(id: string, reason?: string): Promise<ApiResponse<any>> {
-    return this.delete(`/api/v1/admin/groups/${id}`, { reason })
-  }
+async deleteGroup(id: string, reason?: string): Promise<ApiResponse<any>> {
+  return this.delete(`/api/v1/admin/groups/${id}`, { reason });
+}
 
-  async bulkGroupAction(data: { 
-    group_ids: string[]
-    action: string
-    reason?: string 
-  }): Promise<ApiResponse<any>> {
-    return this.post('/api/v1/admin/groups/bulk/actions', data)
-  }
+async bulkGroupAction(data: {
+  group_ids: string[]
+  action: string
+  reason?: string
+}): Promise<ApiResponse<any>> {
+  return this.post('/api/v1/admin/groups/bulk/actions', data);
+}
+
 
   // ==================== EVENT MANAGEMENT ====================
   async getEvents(params?: any): Promise<PaginatedResponse> {

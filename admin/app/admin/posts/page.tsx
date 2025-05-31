@@ -119,16 +119,26 @@ const initialFilters = {
 
 // Utility function to extract user data from post
 const getUserFromPost = (post: Post) => {
-  const user = post.user || (post as any).author;
+  // Check for user data in various possible locations
+  const user = post.user || (post as any).author || (post as any).userInfo;
   const userId = post.user_id;
 
+  // Debug user data in development
+  if (process.env.NODE_ENV === "development" && !user && userId) {
+    console.log(`🔍 Post ${post.id} has user_id ${userId} but no user data`);
+  }
+
   if (user) {
+    // Handle cases where user exists but might have incomplete data
     return {
-      displayName: user.first_name
-        ? `${user.first_name} ${user.last_name || ""}`.trim()
-        : user.username || "Unknown User",
+      displayName:
+        user.first_name && user.last_name
+          ? `${user.first_name} ${user.last_name}`.trim()
+          : user.first_name
+          ? user.first_name
+          : user.username || "Unknown User",
       username: user.username || `user_${userId?.slice(-4) || "unknown"}`,
-      profilePicture: user.profile_picture,
+      profilePicture: user.profile_picture || user.avatar,
       isVerified: user.is_verified || false,
       initials: (
         user.first_name?.[0] ||
@@ -148,7 +158,56 @@ const getUserFromPost = (post: Post) => {
     userId,
   };
 };
+const processPostsWithUserData = async (posts: Post[]): Promise<Post[]> => {
+  if (!posts || posts.length === 0) return [];
 
+  // Find posts without user data
+  const postsWithoutUserData = posts.filter(
+    (post) => post.user_id && (!post.user || !post.user.username)
+  );
+
+  // If all posts have user data, return as is
+  if (postsWithoutUserData.length === 0) {
+    return posts;
+  }
+
+  console.log(
+    `⚠️ Found ${postsWithoutUserData.length} posts without complete user data`
+  );
+
+  // Get unique user IDs
+  const userIds = [
+    ...new Set(postsWithoutUserData.map((post) => post.user_id)),
+  ];
+
+  // Fetch user data for these posts
+  try {
+    const response = await apiClient.getUsersByIds(userIds);
+
+    if (response.data && Array.isArray(response.data)) {
+      // Create a map of user ID to user data
+      const usersMap = new Map();
+      response.data.forEach((user) => {
+        usersMap.set(user.id, user);
+      });
+
+      // Update posts with fetched user data
+      return posts.map((post) => {
+        if (post.user_id && (!post.user || !post.user.username)) {
+          const userData = usersMap.get(post.user_id);
+          if (userData) {
+            post.user = userData;
+          }
+        }
+        return post;
+      });
+    }
+  } catch (error) {
+    console.error("❌ Failed to fetch users data:", error);
+  }
+
+  return posts;
+};
 function PostsPage() {
   const [state, setState] = useState<PostsPageState>({
     posts: [],
@@ -179,30 +238,18 @@ function PostsPage() {
         page: filters.page,
         limit: filters.limit,
         include_user: true, // Request user data to be included
+        expand: "user", // Explicitly request user expansion
       };
 
-      // Add search parameter
+      // Add all filters
       if (filters.search) params.search = filters.search;
-
-      // Add type filter
       if (filters.type && filters.type !== "all") params.type = filters.type;
-
-      // Add visibility filter
-      if (filters.visibility && filters.visibility !== "all") {
+      if (filters.visibility && filters.visibility !== "all")
         params.visibility = filters.visibility;
-      }
-
-      // Add reported filter
-      if (filters.is_reported && filters.is_reported !== "all") {
+      if (filters.is_reported && filters.is_reported !== "all")
         params.is_reported = filters.is_reported === "true";
-      }
-
-      // Add hidden filter
-      if (filters.is_hidden && filters.is_hidden !== "all") {
+      if (filters.is_hidden && filters.is_hidden !== "all")
         params.is_hidden = filters.is_hidden === "true";
-      }
-
-      // Add user filter
       if (filters.user_id) params.user_id = filters.user_id;
 
       // Add sorting
@@ -214,21 +261,15 @@ function PostsPage() {
       console.log("📡 Fetching posts with params:", params);
       const response = await apiClient.getPosts(params);
 
-      // Debug: Check if user data is included
-      if (response.data && response.data.length > 0) {
-        const firstPost = response.data[0];
-        console.log("🔍 Sample post:", {
-          id: firstPost.id,
-          user_id: firstPost.user_id,
-          has_user: !!firstPost.user,
-          has_author: !!(firstPost as any).author,
-          user_data: firstPost.user || (firstPost as any).author,
-        });
-      }
+      // Process posts to ensure all have user data
+      let postsWithUserData = response.data || [];
+
+      // If the API doesn't return complete user data with posts, process them to add user data
+      postsWithUserData = await processPostsWithUserData(postsWithUserData);
 
       setState((prev) => ({
         ...prev,
-        posts: response.data || [],
+        posts: postsWithUserData,
         pagination: response.pagination || undefined,
         loading: false,
       }));
@@ -430,36 +471,87 @@ function PostsPage() {
       key: "user",
       label: "Author",
       render: (_, post: Post) => {
-        const userInfo = getUserFromPost(post);
+        // Get the user data directly from the post
+        const user = post.user;
 
+        // If user data is available, display it properly
+        if (user && user.username) {
+          return (
+            <div className="flex items-center gap-3">
+              <Avatar className="h-8 w-8">
+                <AvatarImage src={user.profile_picture} alt={user.username} />
+                <AvatarFallback>
+                  {(
+                    user.first_name?.[0] ||
+                    user.username?.[0] ||
+                    "U"
+                  ).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <div className="font-medium flex items-center gap-2">
+                  {/* Display real name if available, otherwise username */}
+                  {user.first_name && user.last_name
+                    ? `${user.first_name} ${user.last_name}`
+                    : user.first_name || user.username}
+
+                  {user.is_verified && (
+                    <div className="inline-block w-3 h-3 bg-blue-500 rounded-full flex items-center justify-center">
+                      <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                    </div>
+                  )}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  @{user.username}
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // If post.user exists but doesn't have username, it might have partial data
+        if (user) {
+          return (
+            <div className="flex items-center gap-3">
+              <Avatar className="h-8 w-8">
+                <AvatarFallback>
+                  {(user.first_name?.[0] || "U").toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <div className="font-medium">
+                  {user.first_name || user.email || "User"}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  <Button
+                    variant="link"
+                    className="h-auto p-0 text-xs text-blue-500"
+                    onClick={() => fetchPosts()}
+                  >
+                    Refresh user data
+                  </Button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // Fallback for when user data is not available at all
         return (
           <div className="flex items-center gap-3">
             <Avatar className="h-8 w-8">
-              <AvatarImage
-                src={userInfo.profilePicture}
-                alt={userInfo.username}
-              />
-              <AvatarFallback>{userInfo.initials}</AvatarFallback>
+              <AvatarFallback>U</AvatarFallback>
             </Avatar>
             <div className="min-w-0">
-              <div className="font-medium flex items-center gap-2">
-                {userInfo.displayName}
-                {userInfo.isVerified && (
-                  <div className="inline-block w-3 h-3 bg-blue-500 rounded-full flex items-center justify-center">
-                    <div className="w-1.5 h-1.5 bg-white rounded-full" />
-                  </div>
-                )}
-              </div>
+              <div className="font-medium">Loading user...</div>
               <div className="text-sm text-muted-foreground">
-                @{userInfo.username}
-                {!(post.user || (post as any).author) && post.user_id && (
-                  <span
-                    className="ml-1 text-xs text-orange-500"
-                    title="User data not loaded"
-                  >
-                    (No user data)
-                  </span>
-                )}
+                <Button
+                  variant="link"
+                  className="h-auto p-0 text-xs text-blue-500"
+                  onClick={() => fetchPosts()}
+                >
+                  Refresh data
+                </Button>
               </div>
             </div>
           </div>

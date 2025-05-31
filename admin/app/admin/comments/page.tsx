@@ -144,7 +144,30 @@ function CommentsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [hideReason, setHideReason] = useState("");
   const [editContent, setEditContent] = useState("");
+  const validateComment = (comment: any): boolean => {
+    if (!comment || typeof comment !== "object") {
+      console.warn("Invalid comment object:", comment);
+      return false;
+    }
 
+    if (
+      !comment.id ||
+      typeof comment.id !== "string" ||
+      comment.id.trim() === ""
+    ) {
+      console.warn("Comment missing valid ID:", comment);
+      return false;
+    }
+
+    // Check if it's a valid ObjectID format (24 hex characters)
+    const objectIdRegex = /^[0-9a-fA-F]{24}$/;
+    if (!objectIdRegex.test(comment.id)) {
+      console.warn("Comment has invalid ID format:", comment.id);
+      return false;
+    }
+
+    return true;
+  };
   const fetchComments = useCallback(async (filters = state.filters) => {
     try {
       setState((prev) => ({ ...prev, loading: true, error: null }));
@@ -211,6 +234,7 @@ function CommentsPage() {
       }));
     }
   }, []);
+  
   const processCommentsWithUserData = async (
     comments: Comment[]
   ): Promise<Comment[]> => {

@@ -78,7 +78,7 @@ func SetupAdminRoutes(router *gin.Engine, adminHandler *handlers.AdminHandler, a
 
 	// Dashboard routes
 	admin.GET("/dashboard", adminHandler.GetDashboard)
-	admin.GET("/dashboard/stats", adminHandler.GetDashboardStats)
+	admin.GET("/dashboard/stats", adminHandler.GetDashboard)
 
 	// User Management
 	users := admin.Group("/users")

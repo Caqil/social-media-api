@@ -25,6 +25,145 @@ func NewFollowHandler(followService *services.FollowService) *FollowHandler {
 	}
 }
 
+// GetFollowers retrieves user's followers
+func (h *FollowHandler) GetFollowers(c *gin.Context) {
+	userIDStr := c.Param("id") // ✅ Changed from "userId" to "id"
+	userID, err := primitive.ObjectIDFromHex(userIDStr)
+	if err != nil {
+		utils.BadRequestResponse(c, "Invalid user ID format", err)
+		return
+	}
+
+	// Get current user ID if authenticated
+	var currentUserID *primitive.ObjectID
+	if uid, exists := c.Get("user_id"); exists {
+		id := uid.(primitive.ObjectID)
+		currentUserID = &id
+	}
+
+	// Get pagination parameters
+	params := utils.GetPaginationParams(c)
+
+	followers, err := h.followService.GetFollowers(userID, currentUserID, params.Limit, params.Offset)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to get followers", err)
+		return
+	}
+
+	totalCount := int64(len(followers))
+	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
+
+	utils.PaginatedSuccessResponse(c, "Followers retrieved successfully", followers, paginationMeta, nil)
+}
+
+// GetFollowing retrieves users that a user is following
+func (h *FollowHandler) GetFollowing(c *gin.Context) {
+	userIDStr := c.Param("id") // ✅ Changed from "userId" to "id"
+	userID, err := primitive.ObjectIDFromHex(userIDStr)
+	if err != nil {
+		utils.BadRequestResponse(c, "Invalid user ID format", err)
+		return
+	}
+
+	// Get current user ID if authenticated
+	var currentUserID *primitive.ObjectID
+	if uid, exists := c.Get("user_id"); exists {
+		id := uid.(primitive.ObjectID)
+		currentUserID = &id
+	}
+
+	// Get pagination parameters
+	params := utils.GetPaginationParams(c)
+
+	following, err := h.followService.GetFollowing(userID, currentUserID, params.Limit, params.Offset)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to get following", err)
+		return
+	}
+
+	totalCount := int64(len(following))
+	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
+
+	utils.PaginatedSuccessResponse(c, "Following retrieved successfully", following, paginationMeta, nil)
+}
+
+// GetFollowStats retrieves follow statistics for a user
+func (h *FollowHandler) GetFollowStats(c *gin.Context) {
+	userIDStr := c.Param("id") // ✅ Changed from "userId" to "id"
+	userID, err := primitive.ObjectIDFromHex(userIDStr)
+	if err != nil {
+		utils.BadRequestResponse(c, "Invalid user ID format", err)
+		return
+	}
+
+	stats, err := h.followService.GetFollowStats(userID)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to get follow statistics", err)
+		return
+	}
+
+	utils.OkResponse(c, "Follow statistics retrieved successfully", stats)
+}
+
+// GetMutualFollows retrieves mutual follows between current user and another user
+func (h *FollowHandler) GetMutualFollows(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	targetUserIDStr := c.Param("id") // ✅ Changed from "userId" to "id"
+	targetUserID, err := primitive.ObjectIDFromHex(targetUserIDStr)
+	if err != nil {
+		utils.BadRequestResponse(c, "Invalid user ID format", err)
+		return
+	}
+
+	// Get pagination parameters
+	params := utils.GetPaginationParams(c)
+
+	mutualFollows, err := h.followService.GetMutualFollows(userID.(primitive.ObjectID), targetUserID, params.Limit, params.Offset)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to get mutual follows", err)
+		return
+	}
+
+	totalCount := int64(len(mutualFollows))
+	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
+
+	utils.PaginatedSuccessResponse(c, "Mutual follows retrieved successfully", mutualFollows, paginationMeta, nil)
+}
+
+// CheckFollowStatus checks if current user follows another user
+func (h *FollowHandler) CheckFollowStatus(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	targetUserIDStr := c.Param("id") // ✅ Changed from "userId" to "id"
+	targetUserID, err := primitive.ObjectIDFromHex(targetUserIDStr)
+	if err != nil {
+		utils.BadRequestResponse(c, "Invalid user ID format", err)
+		return
+	}
+
+	status, err := h.followService.GetFollowStatus(userID.(primitive.ObjectID), targetUserID)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to check follow status", err)
+		return
+	}
+
+	utils.OkResponse(c, "Follow status retrieved successfully", gin.H{
+		"target_user_id": targetUserIDStr,
+		"status":         status,
+		"is_following":   status == "accepted",
+		"is_pending":     status == "pending",
+	})
+}
+
 // FollowUser follows another user
 func (h *FollowHandler) FollowUser(c *gin.Context) {
 	userID, exists := c.Get("user_id")
@@ -33,7 +172,7 @@ func (h *FollowHandler) FollowUser(c *gin.Context) {
 		return
 	}
 
-	followeeIDStr := c.Param("userId")
+	followeeIDStr := c.Param("id") // ✅ Changed from "userId" to "id"
 	followeeID, err := primitive.ObjectIDFromHex(followeeIDStr)
 	if err != nil {
 		utils.BadRequestResponse(c, "Invalid user ID format", err)
@@ -76,7 +215,7 @@ func (h *FollowHandler) UnfollowUser(c *gin.Context) {
 		return
 	}
 
-	followeeIDStr := c.Param("userId")
+	followeeIDStr := c.Param("id") // ✅ Changed from "userId" to "id"
 	followeeID, err := primitive.ObjectIDFromHex(followeeIDStr)
 	if err != nil {
 		utils.BadRequestResponse(c, "Invalid user ID format", err)
@@ -99,66 +238,35 @@ func (h *FollowHandler) UnfollowUser(c *gin.Context) {
 	})
 }
 
-// GetFollowers retrieves user's followers
-func (h *FollowHandler) GetFollowers(c *gin.Context) {
-	userIDStr := c.Param("userId")
-	userID, err := primitive.ObjectIDFromHex(userIDStr)
+// RemoveFollower removes a follower
+func (h *FollowHandler) RemoveFollower(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.UnauthorizedResponse(c, "User not authenticated")
+		return
+	}
+
+	followerIDStr := c.Param("id") // ✅ Changed from "userId" to "id"
+	followerID, err := primitive.ObjectIDFromHex(followerIDStr)
 	if err != nil {
 		utils.BadRequestResponse(c, "Invalid user ID format", err)
 		return
 	}
 
-	// Get current user ID if authenticated
-	var currentUserID *primitive.ObjectID
-	if uid, exists := c.Get("user_id"); exists {
-		id := uid.(primitive.ObjectID)
-		currentUserID = &id
-	}
-
-	// Get pagination parameters
-	params := utils.GetPaginationParams(c)
-
-	followers, err := h.followService.GetFollowers(userID, currentUserID, params.Limit, params.Offset)
+	err = h.followService.RemoveFollower(userID.(primitive.ObjectID), followerID)
 	if err != nil {
-		utils.InternalServerErrorResponse(c, "Failed to get followers", err)
+		if strings.Contains(err.Error(), "not found") {
+			utils.NotFoundResponse(c, "Follower relationship not found")
+			return
+		}
+		utils.InternalServerErrorResponse(c, "Failed to remove follower", err)
 		return
 	}
 
-	totalCount := int64(len(followers))
-	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
-
-	utils.PaginatedSuccessResponse(c, "Followers retrieved successfully", followers, paginationMeta, nil)
-}
-
-// GetFollowing retrieves users that a user is following
-func (h *FollowHandler) GetFollowing(c *gin.Context) {
-	userIDStr := c.Param("userId")
-	userID, err := primitive.ObjectIDFromHex(userIDStr)
-	if err != nil {
-		utils.BadRequestResponse(c, "Invalid user ID format", err)
-		return
-	}
-
-	// Get current user ID if authenticated
-	var currentUserID *primitive.ObjectID
-	if uid, exists := c.Get("user_id"); exists {
-		id := uid.(primitive.ObjectID)
-		currentUserID = &id
-	}
-
-	// Get pagination parameters
-	params := utils.GetPaginationParams(c)
-
-	following, err := h.followService.GetFollowing(userID, currentUserID, params.Limit, params.Offset)
-	if err != nil {
-		utils.InternalServerErrorResponse(c, "Failed to get following", err)
-		return
-	}
-
-	totalCount := int64(len(following))
-	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
-
-	utils.PaginatedSuccessResponse(c, "Following retrieved successfully", following, paginationMeta, nil)
+	utils.OkResponse(c, "Follower removed successfully", gin.H{
+		"follower_id": followerIDStr,
+		"removed":     true,
+	})
 }
 
 // GetFollowRequests retrieves pending follow requests
@@ -301,114 +409,6 @@ func (h *FollowHandler) CancelFollowRequest(c *gin.Context) {
 		"follow_id": followIDStr,
 		"status":    "cancelled",
 	})
-}
-
-// RemoveFollower removes a follower
-func (h *FollowHandler) RemoveFollower(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		utils.UnauthorizedResponse(c, "User not authenticated")
-		return
-	}
-
-	followerIDStr := c.Param("userId")
-	followerID, err := primitive.ObjectIDFromHex(followerIDStr)
-	if err != nil {
-		utils.BadRequestResponse(c, "Invalid user ID format", err)
-		return
-	}
-
-	err = h.followService.RemoveFollower(userID.(primitive.ObjectID), followerID)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			utils.NotFoundResponse(c, "Follower relationship not found")
-			return
-		}
-		utils.InternalServerErrorResponse(c, "Failed to remove follower", err)
-		return
-	}
-
-	utils.OkResponse(c, "Follower removed successfully", gin.H{
-		"follower_id": followerIDStr,
-		"removed":     true,
-	})
-}
-
-// GetFollowStats retrieves follow statistics for a user
-func (h *FollowHandler) GetFollowStats(c *gin.Context) {
-	userIDStr := c.Param("userId")
-	userID, err := primitive.ObjectIDFromHex(userIDStr)
-	if err != nil {
-		utils.BadRequestResponse(c, "Invalid user ID format", err)
-		return
-	}
-
-	stats, err := h.followService.GetFollowStats(userID)
-	if err != nil {
-		utils.InternalServerErrorResponse(c, "Failed to get follow statistics", err)
-		return
-	}
-
-	utils.OkResponse(c, "Follow statistics retrieved successfully", stats)
-}
-
-// CheckFollowStatus checks if current user follows another user
-func (h *FollowHandler) CheckFollowStatus(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		utils.UnauthorizedResponse(c, "User not authenticated")
-		return
-	}
-
-	targetUserIDStr := c.Param("userId")
-	targetUserID, err := primitive.ObjectIDFromHex(targetUserIDStr)
-	if err != nil {
-		utils.BadRequestResponse(c, "Invalid user ID format", err)
-		return
-	}
-
-	status, err := h.followService.GetFollowStatus(userID.(primitive.ObjectID), targetUserID)
-	if err != nil {
-		utils.InternalServerErrorResponse(c, "Failed to check follow status", err)
-		return
-	}
-
-	utils.OkResponse(c, "Follow status retrieved successfully", gin.H{
-		"target_user_id": targetUserIDStr,
-		"status":         status,
-		"is_following":   status == "accepted",
-		"is_pending":     status == "pending",
-	})
-}
-
-// GetMutualFollows retrieves mutual follows between current user and another user
-func (h *FollowHandler) GetMutualFollows(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		utils.UnauthorizedResponse(c, "User not authenticated")
-		return
-	}
-
-	targetUserIDStr := c.Param("userId")
-	targetUserID, err := primitive.ObjectIDFromHex(targetUserIDStr)
-	if err != nil {
-		utils.BadRequestResponse(c, "Invalid user ID format", err)
-		return
-	}
-
-	// Get pagination parameters
-	params := utils.GetPaginationParams(c)
-
-	mutualFollows, err := h.followService.GetMutualFollows(userID.(primitive.ObjectID), targetUserID, params.Limit, params.Offset)
-	if err != nil {
-		utils.InternalServerErrorResponse(c, "Failed to get mutual follows", err)
-		return
-	}
-
-	totalCount := int64(len(mutualFollows))
-	paginationMeta := utils.CreatePaginationMeta(params, totalCount)
-
-	utils.PaginatedSuccessResponse(c, "Mutual follows retrieved successfully", mutualFollows, paginationMeta, nil)
 }
 
 // GetSuggestedUsers retrieves suggested users to follow

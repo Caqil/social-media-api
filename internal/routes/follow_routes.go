@@ -10,7 +10,6 @@ import (
 
 // SetupFollowRoutes sets up follow/social relationship routes
 func SetupFollowRoutes(router *gin.Engine, followHandler *handlers.FollowHandler, authMiddleware *middleware.AuthMiddleware) {
-	// Public follow routes (viewing relationships) - FIXED: Changed :userId to :id
 	follows := router.Group("/api/v1")
 	{
 		// User relationship viewing
@@ -20,7 +19,6 @@ func SetupFollowRoutes(router *gin.Engine, followHandler *handlers.FollowHandler
 		follows.GET("/users/:id/mutual-follows", authMiddleware.RequireAuth(), followHandler.GetMutualFollows)
 	}
 
-	// Protected follow routes - FIXED: Changed :userId to :id
 	followsProtected := router.Group("/api/v1")
 	followsProtected.Use(authMiddleware.RequireAuth())
 	{
